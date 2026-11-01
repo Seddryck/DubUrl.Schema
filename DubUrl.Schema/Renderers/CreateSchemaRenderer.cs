@@ -22,7 +22,7 @@ public class CreateSchemaRenderer : RendererEngine
     { }
 
     public CreateSchemaRenderer(IDialect dialect, NativeTypeRegistry? nativeTypes, bool dropIdentitySequences)
-        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, dropIdentitySequences))
+        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, nativeTypes ?? NativeTypeRegistry.Default, dropIdentitySequences))
     {
         nativeTypes ??= NativeTypeRegistry.Default;
         AddFormatter("tabledescription", value => value is TableViewModel { Description: not null } table && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer renderer
@@ -35,10 +35,14 @@ public class CreateSchemaRenderer : RendererEngine
         AddFormatter("columnspec", value => RenderColumnSpecification(value, dialect, nativeTypes));
     }
 
-    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, bool dropExisting)
+    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting)
     {
         var helpers = CreateHelpers(dialect);
-        helpers.Add("identityprerequisites", value => RenderIdentityPrerequisites(value, dialect, dropExisting));
+        helpers.Add("identityprerequisites", value =>
+        {
+            if (value is TableViewModel table) PrepareColumnPlans(table, dialect, nativeTypes);
+            return RenderIdentityPrerequisites(value, dialect, dropExisting);
+        });
         return helpers;
     }
 
@@ -72,6 +76,13 @@ public class CreateSchemaRenderer : RendererEngine
         if (value is not ColumnViewModel column)
             throw new ArgumentException("The column specification formatter requires a column view model.", nameof(value));
 
+        if (column.PlannedSpecification is not null) return column.PlannedSpecification;
+        var type = ResolveColumnType(column, dialect, nativeTypes);
+        return RenderGeneration(column, dialect, type);
+    }
+
+    private static string ResolveColumnType(ColumnViewModel column, IDialect dialect, NativeTypeRegistry nativeTypes)
+    {
         var type = RenderColumnType(column, dialect, nativeTypes);
         type = dialect.SchemaSqlRenderer.RenderColumnType(dialect, type, column.DeclaredLength,
             column.Precision, column.Scale,
@@ -79,7 +90,11 @@ public class CreateSchemaRenderer : RendererEngine
         if (column.IsKey)
             dialect.SchemaSqlRenderer.ValidateKeyColumn(dialect, type, column.TableIdentity?.ToString() ?? "unknown", column.Name);
 
-        return column.Generation switch
+        return type;
+    }
+
+    private static string RenderGeneration(ColumnViewModel column, IDialect dialect, string type)
+        => column.Generation switch
         {
             null => type,
             IdentityColumnGeneration when dialect.SchemaSqlRenderer is ISequenceIdentitySqlRenderer sequence =>
@@ -92,6 +107,47 @@ public class CreateSchemaRenderer : RendererEngine
             _ => throw new NotSupportedException(
                 $"Column generation '{column.Generation.GetType().Name}' is not supported by dialect '{dialect.GetType().Name}'.")
         };
+
+    private static void PrepareColumnPlans(TableViewModel table, IDialect dialect, NativeTypeRegistry nativeTypes)
+    {
+        foreach (var column in table.Columns)
+        {
+            column.PlannedSpecification = null;
+            column.RenderedClauses = ColumnDefinitionClauses.None;
+        }
+        if (dialect.SchemaSqlRenderer is not IColumnDefinitionSqlRenderer renderer) return;
+        var primaryColumns = table.PrimaryKey?.Columns.Select(column => column.Name).ToArray()
+            ?? table.Columns.Where(column => column.PrimaryKey is not null).Select(column => column.Name).ToArray();
+        foreach (var column in table.Columns)
+        {
+            var generation = column.Generation switch
+            {
+                IdentityColumnGeneration identity => new ColumnGenerationContext(true, identity.Seed, identity.Increment),
+                GeneratedColumnGeneration generated => new ColumnGenerationContext(false,
+                    Expression: RenderExpression(generated.Expression, dialect), Stored: generated.Storage == GeneratedColumnStorage.Stored),
+                _ => null
+            };
+            var identityName = table.Identity;
+            var context = new ColumnDefinitionContext(new(identityName.Name, identityName.Schema, identityName.Database, identityName.Catalog),
+                column.Name, ResolveColumnType(column, dialect, nativeTypes), primaryColumns,
+                table.PrimaryKey?.Name ?? column.PrimaryKey?.Name, table.PrimaryKey is not null,
+                column.Nullable is not null, column.NotNullable is not null, column.Unique is not null, generation,
+                column.HasDefaultValue ? dialect.Renderer.Render(column.DefaultValue, "value") : null,
+                column.Checks.Select(check => RenderCheck(check, dialect))
+                    .Concat(column.MembershipChecks.Select(check => RenderMembership(check, dialect)))
+                    .Concat(column.RegexChecks.Select(check => RenderRegex(check, dialect))).ToArray(), column.Description);
+            var plan = renderer.RenderColumnDefinition(dialect, context);
+            if (plan is null) continue;
+            if (string.IsNullOrWhiteSpace(plan.Specification))
+                throw new NotSupportedException("A column definition plan requires a SQL specification.");
+            if (column.Generation is not null && !plan.Clauses.HasFlag(ColumnDefinitionClauses.Generation))
+                throw new NotSupportedException("A column definition plan must account for declared generation.");
+            if (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
+                && (primaryColumns.Length != 1 || primaryColumns[0] != column.Name))
+                throw new NotSupportedException("A column definition plan can consume only its own single-column primary key.");
+            column.PlannedSpecification = plan.Specification;
+            column.RenderedClauses = plan.Clauses;
+        }
     }
 
     private static IdentityColumnContext IdentityContext(ColumnViewModel column)
@@ -104,7 +160,7 @@ public class CreateSchemaRenderer : RendererEngine
     {
         if (dialect.SchemaSqlRenderer is not ISequenceIdentitySqlRenderer sequence) return "";
         if (value is not TableViewModel table) throw new ArgumentException("Identity prerequisites require a table view model.");
-        var statements = string.Join("\r\n", table.Columns.Where(column => column.Generation is IdentityColumnGeneration).Select(column =>
+        var statements = string.Join("\r\n", table.Columns.Where(column => column.Generation is IdentityColumnGeneration && !column.RenderedClauses.HasFlag(ColumnDefinitionClauses.Generation)).Select(column =>
         {
             var identity = (IdentityColumnGeneration)column.Generation!;
             return sequence.RenderIdentityPrerequisite(dialect, IdentityContext(column), identity.Seed, identity.Increment, dropExisting);

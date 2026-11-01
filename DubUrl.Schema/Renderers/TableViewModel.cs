@@ -13,6 +13,7 @@ public class TableViewModel
     public string[] ProviderDefinitions { get; internal set; } = [];
     public bool PortableKeys { get; internal set; } = true;
     public DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; }
+    public PrimaryKeyConstraintViewModel? SharedPrimaryKey => Columns.Any(column => !column.RenderPrimaryKey) ? null : PrimaryKey;
     public string Name { get; }
     public DatabaseObjectName Identity { get; }
     public ColumnViewModel[] Columns { get; }

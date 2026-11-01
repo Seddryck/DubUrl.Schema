@@ -4,11 +4,20 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using DubUrl.Schema.Constraints;
+using DubUrl.Querying.Dialects;
 
 namespace DubUrl.Schema.Renderers;
 
 public class ColumnViewModel
 {
+    internal string? PlannedSpecification { get; set; }
+    internal ColumnDefinitionClauses RenderedClauses { get; set; }
+    public bool RenderNullability => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Nullability);
+    public bool RenderPrimaryKey => !RenderedClauses.HasFlag(ColumnDefinitionClauses.PrimaryKey);
+    public bool RenderUnique => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Unique);
+    public bool RenderDefault => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Default);
+    public bool RenderChecks => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Checks);
+    public bool RenderComment => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Comment);
     public DatabaseObjectName? TableIdentity { get; }
     public string Name { get; }
     public string Type { get; }
