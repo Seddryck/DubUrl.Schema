@@ -146,12 +146,8 @@ public sealed class SchemaInspector
         constraints.AddRange(MapForeignKeys(table, selected, diagnostics));
         constraints.AddRange(table.Checks.OrderBy(check => check.Name, StringComparer.Ordinal).Select(check => new CheckConstraint(
             Expression(check.Left), check.Operator, Expression(check.Right), check.Name)));
-        // v1 has no named table unique-constraint construct; never turn a constraint into an index.
-        foreach (var unique in table.UniqueConstraints)
-        {
-            diagnostics.Add(new("SDI006", SchemaFeature.UniqueConstraints, MetadataCoverage.Unrepresentable,
-                "A named table unique constraint is not representable in the schema model.", table.Identity));
-        }
+        constraints.AddRange(table.UniqueConstraints.OrderBy(unique => unique.Name, StringComparer.Ordinal)
+            .Select(unique => new UniquenessConstraint(unique.Columns.Select(name => byName[name]).ToArray(), unique.Name)));
 
         return new Table(Name(table.Identity), columns, constraints.ToArray(), table.Comment);
     }

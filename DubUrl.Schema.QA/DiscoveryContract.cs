@@ -113,7 +113,10 @@ public abstract class DiscoveryContract
                 Assert.That(actual.Columns["amount"].DefaultValue, Is.EqualTo(12.25m));
                 Assert.That(result.Schema.Indexes.Values.Single().Columns.Values.Select(column => column.SortDirection),
                     Is.EqualTo(new[] { IndexSortDirection.Descending, IndexSortDirection.Ascending }));
-                Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Contain(SchemaFeature.UniqueConstraints));
+                var unique = actual.Constraints.OfType<DubUrl.Schema.Constraints.UniquenessConstraint>().Single();
+                Assert.That(unique.Name, Is.EqualTo("unique_title"));
+                Assert.That(unique.Columns.Select(column => column.Name), Is.EqualTo(new[] { "title" }));
+                Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Not.Contain(SchemaFeature.UniqueConstraints));
                 Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Contain(SchemaFeature.Indexes));
                 Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Contain(SchemaFeature.Views));
             });

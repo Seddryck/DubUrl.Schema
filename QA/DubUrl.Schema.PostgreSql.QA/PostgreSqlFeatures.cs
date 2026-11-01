@@ -47,7 +47,7 @@ public sealed partial class PostgreSqlSchemaTests
             ["DiscoveryTablesColumns"] = FeatureExpectation.Supported,
             ["DiscoveryFacets"] = FeatureExpectation.Supported,
             ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
-            ["DiscoveryUnique"] = new(ExpectedOutcome.NotEnforced,"The inspector reports named UNIQUE constraints as SDI006 rather than silently mapping them."),
+            ["DiscoveryUnique"] = FeatureExpectation.Supported,
             ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
             ["DiscoveryDefaults"] = FeatureExpectation.Supported,
             ["DiscoveryIdentity"] = FeatureExpectation.Supported,
