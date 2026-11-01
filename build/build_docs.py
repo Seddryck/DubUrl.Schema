@@ -39,7 +39,7 @@ def build(output, version, commit):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", default=str(ROOT / "artifacts/schema-docs.zip"))
-    parser.add_argument("--version", default=json.loads((ROOT / "version.json").read_text())["version"])
+    parser.add_argument("--version", required=True, help="SemVer calculated by GitVersion for this source commit")
     parser.add_argument("--commit", default=None)
     args = parser.parse_args()
     commit = args.commit or subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()

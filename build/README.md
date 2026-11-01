@@ -1,17 +1,36 @@
 # Release and documentation delivery
 
-The libraries and reusable NUnit contracts are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). They share the version in `version.json`; the DubUrl dependency has its own pinned version in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers. No new macOS or ARM support commitment is introduced.
+The libraries and reusable NUnit contracts are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). All packages and the documentation ZIP use the same GitVersion SemVer calculated once from the source commit. The DubUrl dependency remains independently pinned by `DubUrlVersion` in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers.
 
-CI validates every TFM, keeps coverage enforcement separate, validates NuGet contents and runs package consumer tests before publishing. `schema-docs.zip` is a reproducible Jekyll source bundle, including page front matter and stable specification paths. No theme or hosting configuration is included. The single website remains in Seddryck/DubUrl.
+## Automatic versions and releases
+
+`GitVersion.yml` uses the same GitHubFlow/v1 workflow, Conventional Commit expressions, feature branch labels and continuous-deployment main branch as DubUrl; Expressif follows the same commit-based approach. `next-version: v0.100.0` (the prefix matches the inherited `tag-prefix: v`) bootstraps the first main release. It is a lower bound, not a version file to edit for every release. Subsequent versions are calculated from commits and `v` tags.
+
+- `fix:`, `chore:`, `refactor:`, `perf:`, `build:`, `ci:` and the other configured patch types increase the patch.
+- `feat:` or `+semver: minor` increases the minor.
+- Matching breaking-change messages increase the major; `+semver: none`/`skip` uses the inherited no-bump rule.
+- Feature branches carry the inherited `beta.{BranchName}` labels. Pull requests and manual compatibility runs validate and package their calculated version without publishing.
+
+Successful pushes to `main` reserve a `v<SemVer>` tag for every tested package version and publish the NuGet packages automatically, following Expressif's tag policy. Those tags allow successive patch releases to advance (`0.100.0`, `0.100.1`, `0.100.2`). As in both sibling repositories, only a zero patch number creates a GitHub release with `schema-docs.zip`; patch releases publish to NuGet without a GitHub release. No manual `publish=true` switch or synchronized version files remain.
+
+The pipeline builds/tests each supported TFM, runs the real-database matrix, checks coverage, packs and smoke-tests consumers, and then recalculates GitVersion after refreshing main/tags. It rejects tested-commit/version drift and tag collisions, including a concurrent tag creation at the wrong commit. Publication consumes the already-tested artifacts. Configure NuGet trusted publishing for Seddryck/DubUrl.Schema, workflow `ci.yml`, environment `release`; `NUGET_USER` can override the default Seddryck account. The release guard blocks publication while a legacy `appveyor.yml` exists.
+
+For local versioned packaging, use GitVersion 6.6.0 (the version pinned in CI):
 
 ```powershell
-python build/build_docs.py
+$version = gitversion /showvariable SemVer
+dotnet pack DubUrl.Schema/DubUrl.Schema.csproj -c Release -p:Version=$version
+python build/build_docs.py --version $version
+./build/Test-ReleaseGuards.ps1
+python build/test_gitversion.py --gitversion <path-to-dotnet-gitversion>
 ```
 
-On the default branch, run the CI workflow with `publish=true` to release the version in `version.json`. Update both the version file and the default build version for the next release. Configure a NuGet trusted-publishing policy for Seddryck/DubUrl.Schema, workflow `ci.yml`, environment `release`, using repository variable `NUGET_USER`. Publication is gated by all database jobs and package validation. GitHub release assets are uploaded only after NuGet publication succeeds. Publication can be retried for the same commit/version; it must not replace artifacts from another commit.
+Local unversioned builds use `0.0.0`, as in DubUrl. There is no need to modify build properties when preparing a release.
 
-For the first extraction, merge this repository and publish 0.100.0 before merging DubUrl's consuming PR. DubUrl initially uses the already-published 0.55.1 Schema packages from the identical source baseline; update that pin to 0.100.0 and regenerate CLI/worker lockfiles after publication. In that PR pin the exact release ZIP SHA-256 and source commit (use the manifest of the published asset, especially after a squash merge) in `docs/schema-docs.lock.json`; build with `python build/import_schema_docs.py`. Earlier document URLs and `$id` values remain unchanged. Use `--bundle <local zip>` for offline verification of the same pin. Build the website from `artifacts/docs-site`, never from the incomplete source-only `docs` directory.
+## Single documentation website
 
-Schema PRs upload the docs ZIP as a CI artifact. Download it locally and use a temporary lock matching its version, commit and checksum with the main repository importer (`--pin <preview lock> --bundle <artifact>`). Production remains pinned to a reviewed release. Update the pin through a normal DubUrl PR after each Schema documentation release.
+`schema-docs.zip` is a reproducible Jekyll source bundle with front matter and stable specification paths. The theme and hosting remain in Seddryck/DubUrl. PRs upload the bundle as a CI artifact. Preview an unreleased artifact using a temporary lock with its SemVer, source commit and checksum; production consumes reviewed GitHub releases.
 
-For cross-repository compatibility, dispatch CI with `duburl_version` set to a candidate NuGet version. Those runs never publish. This exercises the same build and database tests against core/provider packages without adding a source checkout dependency.
+Merge this repository first to release the initial 0.100.0 automatically, then update the consuming DubUrl PR's package version and CLI/worker lockfiles. Pin the actual published ZIP checksum/source commit in `docs/schema-docs.lock.json` (a squash merge changes the commit). Build with `python build/import_schema_docs.py`, which stages the complete site under `artifacts/docs-site` while retaining the existing URLs and JSON specification identity. Subsequent website updates pin a zero-patch GitHub release; NuGet-only patch versions do not imply a new documentation release.
+
+Dispatch CI with `duburl_version` to test a candidate DubUrl/core provider package set. Manual dispatches never publish, matching the main-branch push boundary in the sibling repositories.

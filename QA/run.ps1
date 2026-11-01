@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
     [ValidateSet('net8.0','net9.0','net10.0')][string]$Framework = 'net10.0',
-    [string]$DubUrlVersion = '0.55.1'
+    [string]$DubUrlVersion = '0.55.1',
+    [string]$Version = '0.0.0'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
@@ -37,9 +38,9 @@ $env:DUBURL_ORACLE_QA_CONNECTION_STRING = "Data Source=127.0.0.1:$port/FREEPDB1;
 $env:DUBURL_SINGLESTORE_QA_CONNECTION_STRING = "Server=127.0.0.1;Port=$port;Database=DubUrl;User ID=root;Password=$password"
 Push-Location $root
 try {
-    dotnet restore $project -p:TargetFramework=$Framework -p:DubUrlVersion=$DubUrlVersion --nologo
+    dotnet restore $project -p:TargetFramework=$Framework -p:DubUrlVersion=$DubUrlVersion -p:Version=$Version --nologo
     if ($LASTEXITCODE) { throw 'QA restore failed.' }
-    dotnet build $project -c Release -f $Framework --no-restore -p:DubUrlVersion=$DubUrlVersion --nologo
+    dotnet build $project -c Release -f $Framework --no-restore -p:DubUrlVersion=$DubUrlVersion -p:Version=$Version --nologo
     if ($LASTEXITCODE) { throw 'QA build failed.' }
     if ($container) {
         docker compose -f $compose -p $composeProject up -d --wait --wait-timeout 900

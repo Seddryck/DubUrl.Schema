@@ -6,10 +6,6 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      publish:
-        description: Publish the tested version from version.json (main only)
-        type: boolean
-        default: false
       duburl_version:
         description: Optional published DubUrl core/provider version for compatibility testing (never publishes)
         type: string
@@ -26,24 +22,44 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.metadata.outputs.version }}
-      duburl: ${{ steps.metadata.outputs.duburl }}
+      semver: ${{ steps.gitversion.outputs.semVer }}
+      patch: ${{ steps.gitversion.outputs.patch }}
+      duburl: ${{ steps.dependency.outputs.duburl }}
     steps:
       - uses: actions/checkout@v7
-      - id: metadata
+        with:
+          fetch-depth: 0
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+        with:
+          versionSpec: 6.6.0
+      - name: Calculate version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+      - name: Validate version and select DubUrl dependency
+        id: dependency
         env:
           CANDIDATE: ${{ inputs.duburl_version }}
+          SCHEMA_VERSION: ${{ steps.gitversion.outputs.semVer }}
         run: |
-          $metadata = Get-Content version.json -Raw | ConvertFrom-Json
-          $candidate = $env:CANDIDATE
-          $duburl = if ($candidate) { $candidate } else { $metadata.dubUrlVersion }
-          foreach ($value in @($metadata.version, $duburl)) {
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $duburl = if ($env:CANDIDATE) { $env:CANDIDATE } else {
+            ($props.Project.PropertyGroup.DubUrlVersion | Where-Object { $_ }).InnerText
+          }
+          foreach ($value in @($env:SCHEMA_VERSION, $duburl)) {
             if ($value -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
           }
-          [xml]$props = Get-Content Directory.Build.props -Raw
-          if (($props.Project.PropertyGroup.Version | Where-Object { $_ }).InnerText -ne $metadata.version) { throw 'Build version and release metadata disagree.' }
-          "version=$($metadata.version)" >> $env:GITHUB_OUTPUT
           "duburl=$duburl" >> $env:GITHUB_OUTPUT
+      - name: Test release guards
+        run: ./build/Test-ReleaseGuards.ps1
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.416
+      - name: Test GitVersion against real release histories
+        run: |
+          dotnet tool install GitVersion.Tool --version 6.6.0 --tool-path artifacts/gitversion
+          if ($LASTEXITCODE) { throw 'Installing the version test tool failed.' }
+          python build/test_gitversion.py --gitversion artifacts/gitversion/dotnet-gitversion
 
   unit:
     needs: version
@@ -67,7 +83,7 @@ jobs:
         run: |
           dotnet restore DubUrl.Schema.sln -p:TargetFramework=${{ matrix.framework }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
           if ($LASTEXITCODE) { throw 'Restore failed.' }
-          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.version }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
+          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
           if ($LASTEXITCODE) { throw 'Build failed.' }
       - name: Unit and document specification tests
         run: |
@@ -125,7 +141,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Run isolated database fixtures
-        run: ./QA/run.ps1 -Database '${{ matrix.database }}' -Framework '${{ matrix.framework }}' -DubUrlVersion '${{ needs.version.outputs.duburl }}'
+        run: ./QA/run.ps1 -Database '${{ matrix.database }}' -Framework '${{ matrix.framework }}' -DubUrlVersion '${{ needs.version.outputs.duburl }}' -Version '${{ needs.version.outputs.semver }}'
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -144,7 +160,7 @@ jobs:
       - name: Test documentation bundle contract
         run: python -m unittest discover -s build -p test_docs_bundle.py
       - name: Build documentation bundle
-        run: python build/build_docs.py --version '${{ needs.version.outputs.version }}'
+        run: python build/build_docs.py --version '${{ needs.version.outputs.semver }}'
       - uses: actions/upload-artifact@v7
         with:
           name: schema-docs
@@ -170,17 +186,17 @@ jobs:
       - name: Pack and validate libraries
         run: |
           foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents','DubUrl.Schema.Testing.Contracts')) {
-            dotnet pack "$project/$project.csproj" -c Release -p:Version=${{ needs.version.outputs.version }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
+            dotnet pack "$project/$project.csproj" -c Release -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
             if ($LASTEXITCODE) { throw 'Packaging failed.' }
           }
-          python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.version }}'
+          python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
           if ($LASTEXITCODE) { throw 'Package validation failed.' }
       - name: Test package-only consumers
         run: |
-          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.version }}
+          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.semver }}
           if ($LASTEXITCODE) { throw 'Consumer restore failed.' }
           foreach ($framework in @('net8.0','net9.0','net10.0')) {
-            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.version }}
+            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.semver }}
             if ($LASTEXITCODE) { throw 'Consumer smoke failed.' }
           }
       - uses: actions/download-artifact@v7
@@ -197,18 +213,75 @@ jobs:
             artifacts/schema-docs.zip.sha256
           if-no-files-found: error
 
-  publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish && inputs.duburl_version == '' && github.ref == 'refs/heads/main'
+  reserve-release:
+    name: Revalidate version and reserve release tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Refresh release branch and tags
+        run: |
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --force --tags
+          if ($LASTEXITCODE) { throw 'Refreshing release references failed.' }
+      - name: Block release while AppVeyor is configured
+        run: |
+          if (Test-Path appveyor.yml) { throw 'Remove the legacy publishing workflow before releasing.' }
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+        with:
+          versionSpec: 6.6.0
+      - name: Recalculate version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+      - name: Validate tested commit and version
+        run: |
+          Import-Module ./build/ReleaseGuards.psm1 -Force
+          $tested = git rev-parse HEAD
+          if ($LASTEXITCODE) { throw 'Reading the tested commit failed.' }
+          Assert-TestedCommit -Actual $tested -Expected '${{ github.sha }}'
+          Assert-VersionUnchanged -Built '${{ needs.version.outputs.semver }}' -Recalculated '${{ steps.gitversion.outputs.semVer }}'
+      - name: Reserve release tag
+        run: |
+          Import-Module ./build/ReleaseGuards.psm1 -Force
+          $tag = 'v${{ needs.version.outputs.semver }}'
+          function Get-RemoteTagCommit {
+            $refs = @(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+            if ($LASTEXITCODE) { throw 'Inspecting the remote release tag failed.' }
+            if ($refs.Count -eq 0) { return $null }
+            $peeled = @($refs | Where-Object { $_ -like "*refs/tags/$tag^{}" })
+            $ref = if ($peeled.Count) { $peeled[0] } else { $refs[0] }
+            return ($ref -split '\s+')[0]
+          }
+          $decision = Get-TagReservationDecision -ExistingCommit (Get-RemoteTagCommit) -ExpectedCommit '${{ github.sha }}'
+          if ($decision -eq 'create') {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag --annotate $tag --message "DubUrl.Schema ${{ needs.version.outputs.semver }}" '${{ github.sha }}'
+            if ($LASTEXITCODE) { throw 'Creating the release tag failed.' }
+            git push origin "refs/tags/$tag"
+            if ($LASTEXITCODE) {
+              $decision = Get-TagReservationDecision -ExistingCommit (Get-RemoteTagCommit) -ExpectedCommit '${{ github.sha }}'
+              if ($decision -ne 'reuse') { throw 'Reserving the release tag failed.' }
+            }
+          }
+
+  publish-nuget:
+    name: Publish tested NuGet packages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, package, reserve-release]
     runs-on: ubuntu-latest
     environment: release
     permissions:
-      contents: write
+      contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
       - uses: actions/download-artifact@v7
         with:
           name: release-artifacts
@@ -216,24 +289,8 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.401
-      - name: Validate artifacts and release identity
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          if (Test-Path appveyor.yml) { throw 'Remove the legacy publishing workflow before releasing.' }
-          python build/validate_packages.py artifacts/nuget $env:VERSION
-          if ($LASTEXITCODE) { throw 'Package validation failed.' }
-          $expected = (Get-Content artifacts/schema-docs.zip.sha256).Split(' ')[0]
-          if ((Get-FileHash artifacts/schema-docs.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Docs checksum mismatch.' }
-          git fetch origin --tags
-          if ($LASTEXITCODE) { throw 'Fetching tags failed.' }
-          $existing = git rev-parse --verify "refs/tags/v$env:VERSION^{commit}" 2>$null
-          if ($LASTEXITCODE -eq 0 -and $existing -ne '${{ github.sha }}') { throw 'Release version already belongs to another commit.' }
-          if (-not $existing) {
-            git tag "v$env:VERSION" '${{ github.sha }}'
-            git push origin "v$env:VERSION"
-            if ($LASTEXITCODE) { throw 'Reserving release tag failed.' }
-          }
+      - name: Revalidate the immutable package set
+        run: python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
       - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: nuget
         with:
@@ -246,19 +303,35 @@ jobs:
             dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
             if ($LASTEXITCODE) { throw 'NuGet publication failed.' }
           }
-      - name: Publish docs and release assets
+
+  github-release:
+    name: Publish documentation and GitHub release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.outputs.patch == '0'
+    needs: [version, package, reserve-release, publish-nuget]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-artifacts
+          path: artifacts
+      - name: Publish documentation release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.version.outputs.version }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.semver }}
         run: |
-          gh release view "v$env:VERSION" --repo '${{ github.repository }}' 2>$null
+          $expected = (Get-Content artifacts/schema-docs.zip.sha256).Split(' ')[0]
+          if ((Get-FileHash artifacts/schema-docs.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Docs checksum mismatch.' }
+          gh release view "v$env:VERSION" 2>$null
           if ($LASTEXITCODE -ne 0) {
-            gh release create "v$env:VERSION" --repo '${{ github.repository }}' --verify-tag --title "DubUrl.Schema $env:VERSION" --generate-notes artifacts/schema-docs.zip artifacts/schema-docs.zip.sha256
+            gh release create "v$env:VERSION" --verify-tag --title "DubUrl.Schema $env:VERSION" --generate-notes artifacts/schema-docs.zip artifacts/schema-docs.zip.sha256
             if ($LASTEXITCODE) { throw 'Release creation failed.' }
           }
           else {
             New-Item -ItemType Directory -Force artifacts/existing-release | Out-Null
-            gh release download "v$env:VERSION" --repo '${{ github.repository }}' --pattern schema-docs.zip.sha256 --dir artifacts/existing-release
+            gh release download "v$env:VERSION" --pattern schema-docs.zip.sha256 --dir artifacts/existing-release
             if ($LASTEXITCODE) { throw 'Could not verify the existing documentation release.' }
             if ((Get-Content artifacts/existing-release/schema-docs.zip.sha256 -Raw) -ne (Get-Content artifacts/schema-docs.zip.sha256 -Raw)) {
               throw 'Existing release has different documentation; refusing to replace it.'
