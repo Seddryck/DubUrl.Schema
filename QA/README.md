@@ -30,7 +30,7 @@ A passing scenario means the declared behavior was verified, not that every engi
 | Provider | Current expectations verified by the shared tests |
 |---|---|
 | PostgreSQL | Portable virtual generated columns are rejected. |
-| SQLite | Comments have no native storage; portable identity/regex rendering is rejected; generated-expression/check/comment metadata has explicit diagnostics. The published unquoted identifier formatter rejects punctuation; discovered Schema qualifiers cannot currently be rendered back. String length is not enforced. |
+| SQLite | Comments have no native storage; portable identity/regex rendering is rejected; generated-expression/check/comment metadata has explicit diagnostics. Main/attached database identities, literal object names and supported discovery round trips are verified. String length is not enforced. |
 | DuckDB | Stored generated columns and filtered indexes are rejected; declared string length and index sort direction are not retained. |
 | SQL Server | Regex rendering is unavailable; expression indexes require computed columns. The adapter executes CREATE VIEW in its required separate batch, while comments stay together to detect batch-variable collisions. |
 | Oracle | The published dialect lacks comment, identity, generated-column, regex and portable-view renderers; it registers no schema discovery reader. Ordinary native catalog observations and supported deployment/index behavior are still tested. |

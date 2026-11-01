@@ -101,7 +101,7 @@ public sealed class SchemaInspector
             var schema = new Schema(tables.ToArray(), indexes.ToArray(), views.ToArray());
             ApplyDiagnosticCoverage(coverage, diagnostics);
             var complete = diagnostics.Count == 0;
-            return new(schema, complete, complete || options.AllowPartial, coverage, diagnostics) { ViewInventory = metadata.Views.Where(view => options.Tables.Count == 0 && (options.Schemas.Count == 0 || options.Schemas.Contains(view.Identity.Schema, StringComparer.Ordinal))).ToArray() };
+            return new(schema, complete, complete || options.AllowPartial, coverage, diagnostics) { ViewInventory = metadata.Views.Where(view => options.Tables.Count == 0 && MatchesScope(options, view.Identity)).ToArray() };
         }
         catch (ArgumentException)
         {
@@ -114,7 +114,7 @@ public sealed class SchemaInspector
     {
         var all = metadata.Tables.ToDictionary(table => table.Identity);
         var selected = metadata.Tables.Where(table =>
-            (options.Schemas.Count == 0 || options.Schemas.Contains(table.Identity.Schema, StringComparer.Ordinal))
+            MatchesScope(options, table.Identity)
             && (options.Tables.Count == 0 || options.Tables.Any(filter => Matches(filter, table.Identity)))).ToDictionary(table => table.Identity);
         foreach (var filter in options.Tables.Where(filter => !selected.Keys.Any(name => Matches(filter, name))))
             diagnostics.Add(new("SDI004", SchemaFeature.Tables, MetadataCoverage.Absent, "A selected table was not found or is not visible.", filter));
@@ -181,7 +181,7 @@ public sealed class SchemaInspector
         var views = new List<View>();
         foreach (var view in metadata.Views.Where(_ => options.Features.Contains(SchemaFeature.Views)).OrderBy(view => Name(view.Identity).Key, StringComparer.Ordinal))
         {
-            if (options.Schemas.Count > 0 && !options.Schemas.Contains(view.Identity.Schema, StringComparer.Ordinal)) continue;
+            if (!MatchesScope(options, view.Identity)) continue;
             if (options.Tables.Count > 0) continue; // Table filters select tables, not views.
             if (view.Source is not null && (selected.ContainsKey(view.Source) || metadata.Views.Any(candidate => candidate.Identity == view.Source)) && view.Projections is not null)
             {
@@ -250,6 +250,10 @@ public sealed class SchemaInspector
         _ => throw new NotSupportedException("Unsupported metadata expression.")
     };
     private static DatabaseObjectName Name(MetadataName name) => new(name.Name, name.Schema, name.Database, name.Catalog);
+    private static bool MatchesScope(DiscoveryOptions options, MetadataName name) =>
+        (options.Schemas.Count == 0 || options.Schemas.Contains(name.Schema, StringComparer.Ordinal))
+        && (options.Databases.Count == 0 || options.Databases.Contains(name.Database, StringComparer.Ordinal))
+        && (options.Catalogs.Count == 0 || options.Catalogs.Contains(name.Catalog, StringComparer.Ordinal));
     private static bool Matches(MetadataName filter, MetadataName name) =>
         filter.Name == name.Name && (filter.Schema is null || filter.Schema == name.Schema)
         && (filter.Database is null || filter.Database == name.Database) && (filter.Catalog is null || filter.Catalog == name.Catalog);

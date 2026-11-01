@@ -1,6 +1,6 @@
 {{#each model.Indexes}}
 {{#unless ConsumedByTable}}
-CREATE {{#if IsUnique}}UNIQUE {{/if}}INDEX {{indexname this}} ON {{objectname TableIdentity}} (
+CREATE {{#if IsUnique}}UNIQUE {{/if}}INDEX {{indexname this}} ON {{indextable TableIdentity}} (
 {{#each Columns}}
     {{identity Name}}{{#if IsAscending}} ASC{{/if}}{{#if IsDescending}} DESC{{/if}}{{#unless @last}},{{/unless}}
 {{/each}}

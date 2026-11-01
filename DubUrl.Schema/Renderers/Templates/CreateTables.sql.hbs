@@ -44,7 +44,7 @@
 {{#each ForeignKeys}}
     , CONSTRAINT {{identity Name}} FOREIGN KEY (
 {{~ #each SourceColumns}}{{identity this}}{{#unless @last}}, {{/unless}}{{/each~}}
-) REFERENCES {{objectname TargetTable}} (
+) REFERENCES {{fktarget this}} (
 {{~ #each TargetColumns}}{{identity this}}{{#unless @last}}, {{/unless}}{{/each~}}
 )
 {{/each}}
