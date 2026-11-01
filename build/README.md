@@ -1,6 +1,6 @@
 # Release and documentation delivery
 
-The libraries and reusable NUnit contracts are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). All packages and the documentation ZIP use the same GitVersion SemVer calculated once from the source commit. The DubUrl dependency remains independently pinned by `DubUrlVersion` in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers.
+The Schema and Documents libraries are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). All packages and the documentation ZIP use the same GitVersion SemVer calculated once from the source commit. The DubUrl dependency remains independently pinned by `DubUrlVersion` in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers.
 
 ## Automatic versions and releases
 
@@ -37,7 +37,7 @@ Dispatch CI with `duburl_version` to test a candidate DubUrl/core provider packa
 
 ## Packaging the unit-matrix outputs
 
-Each successful unit job uploads the three library DLLs and portable PDBs for its TFM, optional documentation/dependency files, and a SHA-256 manifest identifying the version and source commit. The package job downloads all three artifacts into their original project/bin/Release/TFM paths and verifies their identities/hashes. No framework-scoped obj or NuGet cache is transferred.
+Each successful unit job uploads the two library DLLs and portable PDBs for its TFM, optional documentation/dependency files, and a SHA-256 manifest identifying the version and source commit. The package job downloads all three artifacts into their original project/bin/Release/TFM paths and verifies their identities/hashes. No framework-scoped obj or NuGet cache is transferred.
 
 Packaging restores the complete multi-target project metadata on its own runner, then runs `dotnet pack --no-build --no-restore`. It does not rebuild the libraries. After packing, every DLL in the NuGet packages and every PDB in the symbol packages must exactly match the unit-matrix manifests. The package-only consumer smoke programs are built separately on all three runtimes.
 
@@ -59,3 +59,5 @@ Run ./build/Test-DotNetSetup.ps1 to check stable selection, missing-component fa
 Each unit job retains its two canonical Cobertura reports in a separate coverage artifact; VSTest's duplicate In/ attachments are excluded. A dedicated upload job downloads all three framework artifacts and sends the six reports to Codecov using GitHub OIDC, matching DubUrl's pinned action and authentication. No Codecov token secret is required. Enable Seddryck/DubUrl.Schema in Codecov if it has not already been activated.
 
 The upload check fails on upload errors. Coverage threshold validation remains a separate check and packaging continues to depend on that threshold, as in DubUrl.
+
+The shared NUnit fixtures live in DubUrl.Schema.QA. This internal helper is built with the solution and consumed by provider QA projects; it is not a test runner or a published package.

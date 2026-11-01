@@ -3,7 +3,7 @@ using System.Data.Common;
 using DubUrl.Querying.Dialects;
 using NUnit.Framework;
 
-namespace DubUrl.Schema.Testing.Contracts;
+namespace DubUrl.Schema.QA;
 
 [Category("Schema")]
 [FixtureLifeCycle(LifeCycle.SingleInstance)]

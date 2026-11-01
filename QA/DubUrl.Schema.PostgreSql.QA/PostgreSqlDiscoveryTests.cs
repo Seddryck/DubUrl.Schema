@@ -3,7 +3,7 @@ using DubUrl.Discovery;
 using DubUrl.Provider.PostgreSql.Discovery;
 using DubUrl.Provider.PostgreSql.Sql;
 using DubUrl.Querying.Dialects;
-using DubUrl.Schema.Testing.Contracts;
+using DubUrl.Schema.QA;
 using Npgsql;
 
 namespace DubUrl.Provider.PostgreSql.QA;

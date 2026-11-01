@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 def validate(directory, version):
-    ids = ["DubUrl.Schema", "DubUrl.Schema.Documents", "DubUrl.Schema.Testing.Contracts"]
+    ids = ["DubUrl.Schema", "DubUrl.Schema.Documents"]
     packages = sorted(Path(directory).glob("*.nupkg"))
     if {p.name for p in packages} != {f"{name}.{version}.nupkg" for name in ids}:
         raise ValueError("Unexpected NuGet package set")
@@ -21,7 +21,7 @@ def validate(directory, version):
             if name == "DubUrl.Schema.Documents" and "schemas/schema-document/v1/schema.json" not in names:
                 raise ValueError("Missing packaged document specification")
         if not (Path(directory) / f"{name}.{version}.snupkg").is_file(): raise ValueError("Missing symbols")
-    print("Validated three multi-target packages and symbol packages")
+    print("Validated two multi-target packages and symbol packages")
 
 if __name__ == "__main__":
     parser=argparse.ArgumentParser();parser.add_argument("directory");parser.add_argument("version")

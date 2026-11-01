@@ -1,4 +1,4 @@
-namespace DubUrl.Schema.Testing.Contracts;
+namespace DubUrl.Schema.QA;
 
 [Flags]
 public enum SchemaCapabilities

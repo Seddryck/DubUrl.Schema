@@ -39,3 +39,10 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - Matched DubUrl's pinned Codecov action, GitHub OIDC permissions and fail-on-error behavior, with a separate upload job. Coverage artifact selection uses only the original collector paths, excluding duplicate VSTest attachments.
 - Workflow lint and report selection were checked against downloaded hosted unit artifacts. No application code changed; domain/database suites and the solution build were not repeated for this upload-only change.
 - Actual service upload is validated by the pushed PR workflow; Codecov repository activation remains an external prerequisite.
+
+## Shared QA project rename
+
+- Renamed DubUrl.Schema.Testing.Contracts to DubUrl.Schema.QA, including its namespace, solution entry and provider references. Removed unused DuckDB/Oracle references.
+- The shared fixture helper is internal and non-packable. CI transfers and publishes only the Schema and Documents library outputs; package validation expects exactly those two multi-target packages plus symbols.
+- Five artifact integrity tests, workflow lint, the full three-TFM Release solution build (zero warnings/errors), all three SQLite QA tests on .NET 10 (zero skips), and validation of both no-build packages passed.
+- Other database suites, full unit suites and consumer smoke programs were not rerun for this rename.

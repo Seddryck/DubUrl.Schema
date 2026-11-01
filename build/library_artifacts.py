@@ -7,7 +7,7 @@ import shutil
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECTS = ("DubUrl.Schema", "DubUrl.Schema.Documents", "DubUrl.Schema.Testing.Contracts")
+PROJECTS = ("DubUrl.Schema", "DubUrl.Schema.Documents")
 FRAMEWORKS = ("net8.0", "net9.0", "net10.0")
 
 

@@ -4,7 +4,7 @@ using DubUrl.Querying.Dialects;
 using DubUrl.Schema;
 using NUnit.Framework;
 
-namespace DubUrl.Schema.Testing.Contracts;
+namespace DubUrl.Schema.QA;
 
 /// <summary>Independent live discovery fixture. Hosts provide an explicitly configured disposable QA database.</summary>
 public abstract class DiscoveryContract

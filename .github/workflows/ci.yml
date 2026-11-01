@@ -228,7 +228,7 @@ jobs:
         run: python build/library_artifacts.py verify --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}'
       - name: Restore packaging metadata and pack tested binaries
         run: |
-          foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents','DubUrl.Schema.Testing.Contracts')) {
+          foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents')) {
             dotnet restore "$project/$project.csproj" -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true
             if ($LASTEXITCODE) { throw 'Packaging restore failed.' }
             dotnet pack "$project/$project.csproj" -c Release --no-build --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget

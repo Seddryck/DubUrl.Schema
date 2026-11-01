@@ -1,7 +1,7 @@
 using System.Data.Common;
 using DubUrl.Provider.MySql.Sql;
 using DubUrl.Querying.Dialects;
-using DubUrl.Schema.Testing.Contracts;
+using DubUrl.Schema.QA;
 using NUnit.Framework;
 
 namespace DubUrl.Provider.SingleStore.QA;

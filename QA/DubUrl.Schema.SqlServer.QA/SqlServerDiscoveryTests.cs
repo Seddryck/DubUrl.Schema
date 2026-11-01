@@ -3,7 +3,7 @@ using DubUrl.Discovery;
 using DubUrl.Provider.SqlServer.Discovery;
 using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
-using DubUrl.Schema.Testing.Contracts;
+using DubUrl.Schema.QA;
 using Microsoft.Data.SqlClient;
 
 namespace DubUrl.Provider.MsSqlServer.QA;
