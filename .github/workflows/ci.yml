@@ -1,0 +1,406 @@
+name: Schema CI and release
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      duburl_version:
+        description: Optional published DubUrl core/provider version for compatibility testing (never publishes)
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: schema-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      semver: ${{ steps.gitversion.outputs.semVer }}
+      patch: ${{ steps.gitversion.outputs.patch }}
+      duburl: ${{ steps.dependency.outputs.duburl }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+        with:
+          versionSpec: 6.6.0
+      - name: Calculate version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+      - name: Validate version and select DubUrl dependency
+        id: dependency
+        env:
+          CANDIDATE: ${{ inputs.duburl_version }}
+          SCHEMA_VERSION: ${{ steps.gitversion.outputs.semVer }}
+        run: |
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $duburl = if ($env:CANDIDATE) { $env:CANDIDATE } else {
+            ($props.Project.PropertyGroup.DubUrlVersion | Where-Object { $_ }).InnerText
+          }
+          foreach ($value in @($env:SCHEMA_VERSION, $duburl)) {
+            if ($value -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
+          }
+          "duburl=$duburl" >> $env:GITHUB_OUTPUT
+      - name: Test release guards
+        run: ./build/Test-ReleaseGuards.ps1
+      - uses: ./.github/actions/setup-dotnet
+        with:
+          sdk-version: 8.0.416
+      - name: Test GitVersion against real release histories
+        run: |
+          dotnet tool install GitVersion.Tool --version 6.6.0 --tool-path artifacts/gitversion
+          if ($LASTEXITCODE) { throw 'Installing the version test tool failed.' }
+          python build/test_gitversion.py --gitversion artifacts/gitversion/dotnet-gitversion
+
+  unit:
+    needs: version
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { framework: net8.0, sdk: 8.0.416 }
+          - { framework: net9.0, sdk: 9.0.308 }
+          - { framework: net10.0 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-dotnet
+        if: matrix.framework != 'net10.0'
+        with:
+          sdk-version: ${{ matrix.sdk }}
+      - uses: ./.github/actions/setup-dotnet
+        if: matrix.framework == 'net10.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - name: Build solution
+        run: |
+          dotnet restore DubUrl.Schema.sln -p:TargetFramework=${{ matrix.framework }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
+          if ($LASTEXITCODE) { throw 'Restore failed.' }
+          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true
+          if ($LASTEXITCODE) { throw 'Build failed.' }
+      - name: Unit and document specification tests
+        run: |
+          foreach ($project in @('DubUrl.Schema.Testing','DubUrl.Schema.Documents.Testing')) {
+            $filter = 'TestCategory!=MySqlIntegration'
+            if ('${{ matrix.framework }}' -ne 'net10.0') { $filter += '&TestCategory!=DuckDbIntegration' }
+            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --filter $filter --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
+            if ($LASTEXITCODE) { throw "Tests failed for $project." }
+            python build/assert_results.py "artifacts/results/$project"
+            if ($LASTEXITCODE) { throw 'Missing test results.' }
+          }
+      - name: Collect tested library binaries and symbols
+        run: python build/library_artifacts.py collect --framework '${{ matrix.framework }}' --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}' --output artifacts/library-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: library-build-${{ matrix.framework }}
+          path: artifacts/library-build
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unit-${{ matrix.framework }}
+          path: artifacts/results
+          if-no-files-found: error
+
+      - name: Upload canonical coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.framework }}
+          path: artifacts/results/*/*/coverage.cobertura.xml
+          if-no-files-found: error
+
+  coverage:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: unit-*
+          path: artifacts/coverage
+      - run: python build/check_coverage.py artifacts/coverage
+
+  coverage-upload:
+    name: Upload coverage
+    needs: unit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download coverage reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-*
+          path: .coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          directory: .coverage
+          fail_ci_if_error: true
+          use_oidc: true
+
+  database:
+    needs: version
+    name: ${{ matrix.database }} (${{ matrix.framework }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [PostgreSql, Sqlite, DuckDb, SqlServer, Oracle, SingleStore, MySql]
+        framework: [net10.0]
+        include:
+          - { database: PostgreSql, runner: ubuntu-latest }
+          - { database: Sqlite, runner: windows-latest }
+          - { database: DuckDb, runner: windows-latest }
+          - { database: SqlServer, runner: ubuntu-latest }
+          - { database: Oracle, runner: ubuntu-latest }
+          - { database: SingleStore, runner: ubuntu-latest }
+          - { database: MySql, runner: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-dotnet
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - name: Run isolated database fixtures
+        run: ./QA/run.ps1 -Database '${{ matrix.database }}' -Framework '${{ matrix.framework }}' -DubUrlVersion '${{ needs.version.outputs.duburl }}' -Version '${{ needs.version.outputs.semver }}'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qa-${{ matrix.database }}-${{ matrix.framework }}
+          path: artifacts/results
+          if-no-files-found: error
+
+  docs:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - name: Test installed SDK/runtime selection
+        run: ./build/Test-DotNetSetup.ps1
+      - name: Test required shared database baseline results
+        run: python build/test_assert_results.py
+      - name: Test XML validator security
+        run: python -m unittest discover -s build -p test_xml_validators.py
+      - name: Test library artifact transfer contract
+        run: python -m unittest discover -s build -p test_library_artifacts.py
+      - name: Test documentation bundle contract
+        run: python -m unittest discover -s build -p test_docs_bundle.py
+      - name: Build documentation bundle
+        run: python build/build_docs.py --version '${{ needs.version.outputs.semver }}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: schema-docs
+          path: |
+            artifacts/schema-docs.zip
+            artifacts/schema-docs.zip.sha256
+          if-no-files-found: error
+
+  package:
+    needs: [version, unit, coverage, database, docs]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-dotnet
+        with:
+          additional-runtimes: '8.0,9.0'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: library-build-*
+          path: .
+          merge-multiple: true
+      - name: Verify tested build artifacts
+        run: python build/library_artifacts.py verify --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}'
+      - name: Restore packaging metadata and pack tested binaries
+        run: |
+          foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents')) {
+            dotnet restore "$project/$project.csproj" -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true
+            if ($LASTEXITCODE) { throw 'Packaging restore failed.' }
+            dotnet pack "$project/$project.csproj" -c Release --no-build --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
+            if ($LASTEXITCODE) { throw 'Packaging failed.' }
+          }
+          python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
+          if ($LASTEXITCODE) { throw 'Package validation failed.' }
+          python build/library_artifacts.py verify-packages --packages artifacts/nuget --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}'
+          if ($LASTEXITCODE) { throw 'Packages differ from tested matrix binaries.' }
+      - name: Test package-only consumers
+        run: |
+          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.semver }}
+          if ($LASTEXITCODE) { throw 'Consumer restore failed.' }
+          foreach ($framework in @('net8.0','net9.0','net10.0')) {
+            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.semver }}
+            if ($LASTEXITCODE) { throw 'Consumer smoke failed.' }
+          }
+      - uses: actions/download-artifact@v7
+        with:
+          name: schema-docs
+          path: artifacts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-artifacts
+          path: |
+            artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
+            artifacts/schema-docs.zip
+            artifacts/schema-docs.zip.sha256
+          if-no-files-found: error
+
+  reserve-release:
+    name: Revalidate version and reserve release tag
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out tested commit
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Refresh release branch and tags
+        run: |
+          git fetch origin +refs/heads/main:refs/remotes/origin/main --force --tags
+          if ($LASTEXITCODE) { throw 'Refreshing release references failed.' }
+      - name: Block release while AppVeyor is configured
+        run: |
+          if (Test-Path appveyor.yml) { throw 'Remove the legacy publishing workflow before releasing.' }
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+        with:
+          versionSpec: 6.6.0
+      - name: Recalculate version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+      - name: Validate tested commit and version
+        run: |
+          Import-Module ./build/ReleaseGuards.psm1 -Force
+          $tested = git rev-parse HEAD
+          if ($LASTEXITCODE) { throw 'Reading the tested commit failed.' }
+          Assert-TestedCommit -Actual $tested -Expected '${{ github.sha }}'
+          Assert-VersionUnchanged -Built '${{ needs.version.outputs.semver }}' -Recalculated '${{ steps.gitversion.outputs.semVer }}'
+      - name: Reserve release tag
+        run: |
+          Import-Module ./build/ReleaseGuards.psm1 -Force
+          $tag = 'v${{ needs.version.outputs.semver }}'
+          function Get-RemoteTagCommit {
+            $refs = @(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}")
+            if ($LASTEXITCODE) { throw 'Inspecting the remote release tag failed.' }
+            if ($refs.Count -eq 0) { return $null }
+            $peeled = @($refs | Where-Object { $_ -like "*refs/tags/$tag^{}" })
+            $ref = if ($peeled.Count) { $peeled[0] } else { $refs[0] }
+            return ($ref -split '\s+')[0]
+          }
+          $decision = Get-TagReservationDecision -ExistingCommit (Get-RemoteTagCommit) -ExpectedCommit '${{ github.sha }}'
+          if ($decision -eq 'create') {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git tag --annotate $tag --message "DubUrl.Schema ${{ needs.version.outputs.semver }}" '${{ github.sha }}'
+            if ($LASTEXITCODE) { throw 'Creating the release tag failed.' }
+            git push origin "refs/tags/$tag"
+            if ($LASTEXITCODE) {
+              $decision = Get-TagReservationDecision -ExistingCommit (Get-RemoteTagCommit) -ExpectedCommit '${{ github.sha }}'
+              if ($decision -ne 'reuse') { throw 'Reserving the release tag failed.' }
+            }
+          }
+
+  publish-nuget:
+    name: Publish tested NuGet packages
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [version, package, reserve-release]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Install build validator dependencies
+        run: python -m pip install -r build/requirements.txt
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-artifacts
+          path: artifacts
+      - uses: ./.github/actions/setup-dotnet
+      - name: Revalidate the immutable package set
+        run: python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
+      - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        id: nuget
+        with:
+          user: ${{ vars.NUGET_USER || 'Seddryck' }}
+      - name: Publish tested NuGet artifacts
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: |
+          foreach ($package in Get-ChildItem artifacts/nuget -Filter *.nupkg) {
+            dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+            if ($LASTEXITCODE) { throw 'NuGet publication failed.' }
+          }
+
+  github-release:
+    name: Publish documentation and GitHub release
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.version.outputs.patch == '0'
+    needs: [version, package, reserve-release, publish-nuget]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-artifacts
+          path: artifacts
+      - name: Publish documentation release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.version.outputs.semver }}
+        run: |
+          $expected = (Get-Content artifacts/schema-docs.zip.sha256).Split(' ')[0]
+          if ((Get-FileHash artifacts/schema-docs.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Docs checksum mismatch.' }
+          gh release view "v$env:VERSION" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "v$env:VERSION" --verify-tag --title "DubUrl.Schema $env:VERSION" --generate-notes artifacts/schema-docs.zip artifacts/schema-docs.zip.sha256
+            if ($LASTEXITCODE) { throw 'Release creation failed.' }
+          }
+          else {
+            New-Item -ItemType Directory -Force artifacts/existing-release | Out-Null
+            gh release download "v$env:VERSION" --pattern schema-docs.zip.sha256 --dir artifacts/existing-release
+            if ($LASTEXITCODE) { throw 'Could not verify the existing documentation release.' }
+            if ((Get-Content artifacts/existing-release/schema-docs.zip.sha256 -Raw) -ne (Get-Content artifacts/schema-docs.zip.sha256 -Raw)) {
+              throw 'Existing release has different documentation; refusing to replace it.'
+            }
+          }

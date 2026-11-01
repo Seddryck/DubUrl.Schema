@@ -1,0 +1,46 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="Moq" Version="4.21.0" />
+    <PackageReference Include="DuckDB.NET.Data" Version="1.5.6" />
+    <PackageReference Include="DuckDB.NET.Bindings.Full" Version="1.5.6" />
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageReference Include="Appveyor.TestLogger" Version="2.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="10.1.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="10.0.3" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DubUrl.Schema\DubUrl.Schema.csproj" />
+    <PackageReference Include="DubUrl.Provider.Teradata" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.Snowflake" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.DuckDb" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.MySql" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.PostgreSql" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.Sqlite" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.SqlServer" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.Text" Version="$(DubUrlVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Update="DotNet.ReproducibleBuilds" Version="2.0.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <PropertyGroup>
+    <ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>None</ResolveAssemblyWarnOrErrorOnTargetArchitectureMismatch>
+  </PropertyGroup>
+</Project>

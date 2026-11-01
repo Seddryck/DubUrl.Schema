@@ -1,0 +1,23 @@
+name: Reuse installed .NET
+description: Reuse a stable SDK/runtime and install only missing components.
+inputs:
+  sdk-channel:
+    description: Stable SDK channel when an exact SDK version is not required.
+    default: '10.0'
+  sdk-version:
+    description: Optional exact stable SDK version for the .NET 8/9 unit entries.
+    default: ''
+  additional-runtimes:
+    description: Comma-separated runtime channels needed by package consumer tests.
+    default: ''
+runs:
+  using: composite
+  steps:
+    - shell: pwsh
+      env:
+        DOTNET_SETUP_PATH: ${{ github.action_path }}
+        REQUESTED_SDK_CHANNEL: ${{ inputs.sdk-channel }}
+        REQUESTED_SDK_VERSION: ${{ inputs.sdk-version }}
+        ADDITIONAL_RUNTIME_CHANNELS: ${{ inputs.additional-runtimes }}
+      run: |
+        & (Join-Path $env:DOTNET_SETUP_PATH 'Setup-DotNet.ps1') -Channel $env:REQUESTED_SDK_CHANNEL -SdkVersion $env:REQUESTED_SDK_VERSION -AdditionalRuntimes $env:ADDITIONAL_RUNTIME_CHANNELS
