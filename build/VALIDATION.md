@@ -1,6 +1,6 @@
 # Migration validation (2026-11-01)
 
-Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10 runtimes. Hosted CI selects the stable SDK matching each unit target framework and .NET 10 for database jobs.
+Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10 runtimes. Hosted CI reuses an installed stable .NET 10 SDK/runtime, retaining exact SDK versions for .NET 8/9 unit entries and using .NET 10 for database jobs.
 
 ## Current unit matrix and artifact reuse
 
@@ -26,3 +26,10 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - Database tests on net8.0/net9.0 are intentionally excluded from CI and were not run locally.
 - GitVersion, release guard and documentation producer tests were not repeated for artifact-transfer changes; their earlier results are listed above.
 - Unrelated main-repository suites, site deployment, package publication and remote tag creation were not performed.
+
+
+## Installed SDK/runtime reuse follow-up
+
+- Eleven PowerShell regression scenarios passed for stable-version selection, no downloads when components are present, SDK-only/runtime-only installation, bundled-runtime reuse, preview rejection, additional consumer runtimes, unchanged older SDK pins, failed/partial SDK installs, preserved global.json settings and the real setup wrapper. The wrapper scenario blocks downloads and verifies SDK/environment selection.
+- PowerShell syntax checks and actionlint passed. The full Release solution built on all three TFMs with zero warnings/errors.
+- Installation callbacks were simulated; no SDK/runtime downloads or machine configuration changes were performed locally. Full domain/database suites were not repeated for this CI setup-only change.

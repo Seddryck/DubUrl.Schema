@@ -42,3 +42,14 @@ Each successful unit job uploads the three library DLLs and portable PDBs for it
 Packaging restores the complete multi-target project metadata on its own runner, then runs `dotnet pack --no-build --no-restore`. It does not rebuild the libraries. After packing, every DLL in the NuGet packages and every PDB in the symbol packages must exactly match the unit-matrix manifests. The package-only consumer smoke programs are built separately on all three runtimes.
 
 Only .NET 10 runs live database tests, including the embedded DuckDB integration cases in the otherwise multi-target unit suite. Package contents retain all three supported TFMs.
+
+
+## CI SDK and runtime reuse
+
+The local setup action inspects installed SDKs and Microsoft.NETCore.App runtimes before downloading anything. .NET 10 jobs use the highest installed stable 10.0 SDK/runtime; SDK 11 and preview versions are excluded. A job-local global.json pins the detected SDK with roll-forward disabled and previews disallowed, so an installed newer compiler cannot silently take over.
+
+Only missing components invoke Microsoft's dotnet-install script. A missing SDK is installed in RUNNER_TEMP and already includes its runtime; availability is checked again before any runtime-only installation. Missing runtimes are installed into the selected SDK root. There is no unconditional LTS runtime installation. The action exports PATH and DOTNET_ROOT for the job without updating registry or persistent user PATH settings.
+
+The .NET 8/9 unit entries keep their existing exact SDK versions, reusing them when present. Packaging needs only a stable .NET 10 SDK and the 8/9 runtimes for its consumer smoke programs; it no longer installs the 8/9 SDKs. All three runtimes are reused when present and only missing runtimes are installed.
+
+Run ./build/Test-DotNetSetup.ps1 to check stable selection, missing-component fallbacks, generated SDK selection and the real wrapper's no-download path. The tests use isolated inventory/installer fixtures and do not install or alter local SDKs.

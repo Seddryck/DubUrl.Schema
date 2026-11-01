@@ -52,9 +52,9 @@ jobs:
           "duburl=$duburl" >> $env:GITHUB_OUTPUT
       - name: Test release guards
         run: ./build/Test-ReleaseGuards.ps1
-      - uses: actions/setup-dotnet@v6
+      - uses: ./.github/actions/setup-dotnet
         with:
-          dotnet-version: 8.0.416
+          sdk-version: 8.0.416
       - name: Test GitVersion against real release histories
         run: |
           dotnet tool install GitVersion.Tool --version 6.6.0 --tool-path artifacts/gitversion
@@ -70,12 +70,15 @@ jobs:
         include:
           - { framework: net8.0, sdk: 8.0.416 }
           - { framework: net9.0, sdk: 9.0.308 }
-          - { framework: net10.0, sdk: 10.0.401 }
+          - { framework: net10.0 }
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: ./.github/actions/setup-dotnet
+        if: matrix.framework != 'net10.0'
         with:
-          dotnet-version: ${{ matrix.sdk }}
+          sdk-version: ${{ matrix.sdk }}
+      - uses: ./.github/actions/setup-dotnet
+        if: matrix.framework == 'net10.0'
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -140,9 +143,7 @@ jobs:
           - { database: MySql, runner: ubuntu-latest }
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.401
+      - uses: ./.github/actions/setup-dotnet
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -163,6 +164,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Test installed SDK/runtime selection
+        run: ./build/Test-DotNetSetup.ps1
       - name: Test library artifact transfer contract
         run: python -m unittest discover -s build -p test_library_artifacts.py
       - name: Test documentation bundle contract
@@ -182,12 +185,9 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-dotnet@v6
+      - uses: ./.github/actions/setup-dotnet
         with:
-          dotnet-version: |
-            8.0.416
-            9.0.308
-            10.0.401
+          additional-runtimes: '8.0,9.0'
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -305,9 +305,7 @@ jobs:
         with:
           name: release-artifacts
           path: artifacts
-      - uses: actions/setup-dotnet@v6
-        with:
-          dotnet-version: 10.0.401
+      - uses: ./.github/actions/setup-dotnet
       - name: Revalidate the immutable package set
         run: python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
       - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
