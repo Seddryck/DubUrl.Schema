@@ -10,7 +10,7 @@ class DocsBundleTests(unittest.TestCase):
     def test_reproducible_bundle_and_manifest_hashes(self):
         with tempfile.TemporaryDirectory() as temp:
             first, second = Path(temp) / "first.zip", Path(temp) / "second.zip"
-            self.assertEqual(build(first, "1.2.0", "a" * 40), build(second, "1.2.0", "a" * 40))
+            self.assertEqual(build(first, "0.100.0", "a" * 40), build(second, "0.100.0", "a" * 40))
             self.assertEqual(first.read_bytes(), second.read_bytes())
             with zipfile.ZipFile(first) as archive:
                 self.assertTrue(all(info.create_system == 3 for info in archive.infolist()))
@@ -25,6 +25,6 @@ class DocsBundleTests(unittest.TestCase):
 
     def test_requires_full_commit(self):
         with tempfile.TemporaryDirectory() as temp:
-            with self.assertRaises(ValueError): build(Path(temp)/"docs.zip", "1.2.0", "main")
+            with self.assertRaises(ValueError): build(Path(temp)/"docs.zip", "0.100.0", "main")
 
 if __name__ == "__main__": unittest.main()

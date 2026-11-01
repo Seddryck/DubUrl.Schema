@@ -23,7 +23,7 @@
 	</ItemGroup>
 
 	<PropertyGroup>
-		<Version Condition="'$(Version)' == ''">1.2.0</Version>
+		<Version Condition="'$(Version)' == ''">0.100.0</Version>
         <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.55.1</DubUrlVersion>
         <RepositoryUrl>https://github.com/Seddryck/DubUrl.Schema</RepositoryUrl>
 		<Authors>Cédric L. Charlier</Authors>
