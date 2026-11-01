@@ -53,3 +53,9 @@ Only missing components invoke Microsoft's dotnet-install script. A missing SDK 
 The .NET 8/9 unit entries keep their existing exact SDK versions, reusing them when present. Packaging needs only a stable .NET 10 SDK and the 8/9 runtimes for its consumer smoke programs; it no longer installs the 8/9 SDKs. All three runtimes are reused when present and only missing runtimes are installed.
 
 Run ./build/Test-DotNetSetup.ps1 to check stable selection, missing-component fallbacks, generated SDK selection and the real wrapper's no-download path. The tests use isolated inventory/installer fixtures and do not install or alter local SDKs.
+
+## Codecov
+
+Each unit job retains its two canonical Cobertura reports in a separate coverage artifact; VSTest's duplicate In/ attachments are excluded. A dedicated upload job downloads all three framework artifacts and sends the six reports to Codecov using GitHub OIDC, matching DubUrl's pinned action and authentication. No Codecov token secret is required. Enable Seddryck/DubUrl.Schema in Codecov if it has not already been activated.
+
+The upload check fails on upload errors. Coverage threshold validation remains a separate check and packaging continues to depend on that threshold, as in DubUrl.

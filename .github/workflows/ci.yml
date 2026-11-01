@@ -112,6 +112,13 @@ jobs:
           path: artifacts/results
           if-no-files-found: error
 
+      - name: Upload canonical coverage reports
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.framework }}
+          path: artifacts/results/*/*/coverage.cobertura.xml
+          if-no-files-found: error
+
   coverage:
     needs: unit
     runs-on: ubuntu-latest
@@ -122,6 +129,27 @@ jobs:
           pattern: unit-*
           path: artifacts/coverage
       - run: python build/check_coverage.py artifacts/coverage
+
+  coverage-upload:
+    name: Upload coverage
+    needs: unit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download coverage reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: coverage-*
+          path: .coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        with:
+          directory: .coverage
+          fail_ci_if_error: true
+          use_oidc: true
 
   database:
     needs: version

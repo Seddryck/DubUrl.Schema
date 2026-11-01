@@ -33,3 +33,9 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - Eleven PowerShell regression scenarios passed for stable-version selection, no downloads when components are present, SDK-only/runtime-only installation, bundled-runtime reuse, preview rejection, additional consumer runtimes, unchanged older SDK pins, failed/partial SDK installs, preserved global.json settings and the real setup wrapper. The wrapper scenario blocks downloads and verifies SDK/environment selection.
 - PowerShell syntax checks and actionlint passed. The full Release solution built on all three TFMs with zero warnings/errors.
 - Installation callbacks were simulated; no SDK/runtime downloads or machine configuration changes were performed locally. Full domain/database suites were not repeated for this CI setup-only change.
+
+## Codecov follow-up
+
+- Matched DubUrl's pinned Codecov action, GitHub OIDC permissions and fail-on-error behavior, with a separate upload job. Coverage artifact selection uses only the original collector paths, excluding duplicate VSTest attachments.
+- Workflow lint and report selection were checked against downloaded hosted unit artifacts. No application code changed; domain/database suites and the solution build were not repeated for this upload-only change.
+- Actual service upload is validated by the pushed PR workflow; Codecov repository activation remains an external prerequisite.
