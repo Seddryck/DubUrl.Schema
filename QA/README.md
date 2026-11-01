@@ -29,7 +29,7 @@ A passing scenario means the declared behavior was verified, not that every engi
 
 | Provider | Current expectations verified by the shared tests |
 |---|---|
-| PostgreSQL | Portable virtual generated columns are rejected; UNIQUE discovery reports SDI006 rather than inventing an index. |
+| PostgreSQL | Portable virtual generated columns are rejected. |
 | SQLite | Comments have no native storage; portable identity/regex rendering is rejected; generated-expression/check/comment metadata has explicit diagnostics. The published unquoted identifier formatter rejects punctuation; discovered Schema qualifiers cannot currently be rendered back. String length is not enforced. |
 | DuckDB | Stored generated columns and filtered indexes are rejected; declared string length and index sort direction are not retained. |
 | SQL Server | Regex rendering is unavailable; expression indexes require computed columns. The adapter executes CREATE VIEW in its required separate batch, while comments stay together to detect batch-variable collisions. |
@@ -38,6 +38,8 @@ A passing scenario means the declared behavior was verified, not that every engi
 | SingleStore | Foreign keys and portable UNIQUE declarations lacking shard-key configuration are rejected with specific codes; MySQL generated-column syntax is rejected. The pinned engine accepts but ignores CHECK clauses and table comments, while column comments persist. No discovery reader is registered. |
 
 Where discovery is absent, every discovery scenario verifies the real provider has no SchemaDiscoveryCapability and SchemaInspector returns SDI001. Where a reader exists, tests execute live DDL, read actual metadata, and assert values/coverage/diagnostic codes. This does not substitute fabricated metadata for a missing reader.
+
+Shared_DiscoveryUnique positively verifies named single and composite UNIQUE constraints for PostgreSQL, SQLite, DuckDB and SQL Server, including column order, complete strict inspection and no duplicated backing indexes. Oracle, SingleStore and MySQL retain the absent-reader contract until their providers register discovery readers.
 
 ## Framework and cleanup guarantees
 

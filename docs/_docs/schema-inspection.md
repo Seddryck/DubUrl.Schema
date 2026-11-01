@@ -43,6 +43,8 @@ SchemaInspector owns public inspection and mapping. Its ConnectionUrl overload c
 
 MetadataCoverage distinguishes Available, Unsupported, Inaccessible, Absent and Unrepresentable. Only available/absent feature coverage with no loss diagnostics is complete. Column and key order is preserved; tables, indexes, constraints, and views are ordered deterministically using ordinal identities/names. Unknown logical types are rejected instead of guessed.
 
+Discovered UNIQUE constraints retain their names and ordered single or composite column sets as table-level UniquenessConstraint objects. Indexes are mapped only from the reader's index metadata; mapping a UNIQUE constraint does not create a backing index. Unsupported reader features and catalog constructs still produce incomplete coverage and diagnostics.
+
 Stable inspection codes:
 
 | Code | Meaning |
@@ -52,7 +54,6 @@ Stable inspection codes:
 | SDI003 | Requested feature has incomplete coverage |
 | SDI004 | Selected table is missing or invisible |
 | SDI005 | Foreign-key target lies outside the selected/visible model |
-| SDI006 | Named table unique constraint is not representable |
 | SDI007 | Metadata cannot form a valid domain schema |
 | SDI008 | View definition is not a portable projection |
 | SDI009 | Catalog construct is not representable |

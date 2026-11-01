@@ -462,7 +462,8 @@ public abstract class ProviderContract : SchemaContract
     {
         var feature = DiscoveryFeature(scenario);
         if (scenario == "DiscoveryTableFilter") Deploy(new([new Table(Name("unrelated"), [Id()])]));
-        var inspected = await Inspect([.. basic, feature], scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table]);
+        SchemaFeature[] features = scenario == "DiscoveryUnique" ? [.. basic, feature, SchemaFeature.Indexes] : [.. basic, feature];
+        var inspected = await Inspect(features, scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table], partial: scenario != "DiscoveryUnique");
         Assert.That(inspected.IsSuccess, Is.True, string.Join(",", inspected.Diagnostics.Select(d => d.Code)));
         if (expectation.Outcome == ExpectedOutcome.NotEnforced && scenario != "DiscoveryIndexes")
         {
@@ -476,7 +477,7 @@ public abstract class ProviderContract : SchemaContract
     {
         Assert.That(inspected.IsComplete, Is.False);
         Assert.That(inspected.Diagnostics.Any(d => d.Feature == feature && d.Coverage is MetadataCoverage.Unsupported or MetadataCoverage.Unrepresentable), Is.True);
-        var diagnosticCode = scenario switch { "DiscoveryUnique" => "SDI006", "DiscoveryGeneration" => "SDI009", _ => "SDI003" };
+        var diagnosticCode = scenario == "DiscoveryGeneration" ? "SDI009" : "SDI003";
         Assert.That(inspected.Diagnostics.Where(d => d.Feature == feature).Select(d => d.Code), Does.Contain(diagnosticCode));
     }
 
@@ -502,7 +503,7 @@ public abstract class ProviderContract : SchemaContract
         var columns = new Column[] { a, b, Text(), new NumericColumn("amount", DbType.Decimal, 10, 2) }; Constraint[] constraints = [];
         if (scenario == "DiscoveryFacets") columns = [new Column("b", DbType.Int32, constraints: [new NotNullableConstraint()]), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)];
         if (scenario == "DiscoveryPrimaryKey") constraints = [new PrimaryKeyConstraint([a, b])];
-        if (scenario == "DiscoveryUnique") constraints = [new UniquenessConstraint([a, b])];
+        if (scenario == "DiscoveryUnique") constraints = [new UniquenessConstraint([b, a], Name("unique_pair")), new UniquenessConstraint([columns[2]], Name("unique_title"))];
         if (scenario == "DiscoveryDefaults") columns = [a, new VarLengthColumn("title", DbType.AnsiString, 40, defaultValue: "hé"), new NumericColumn("amount", DbType.Decimal, 10, 2, defaultValue: 12.25m)];
         if (scenario == "DiscoveryIdentity") columns = [new Column("id", DbType.Int32, constraints: [new PrimaryKeyConstraint()], generation: new IdentityColumnGeneration(10, 2)), Id("payload")];
         if (scenario == "DiscoveryChecks") constraints = [new CheckConstraint(new ColumnIdentityExpression("b"), ">=", new ValueExpression(0))];
@@ -557,6 +558,23 @@ public abstract class ProviderContract : SchemaContract
     private async Task VerifyDiscoveredSchema(string scenario, Table table, Index[] indexes, View portable, SchemaInspectionResult inspected, SchemaFeature[] basic)
     {
         var actual = inspected.Schema!.Tables.Values.Single(t => t.Name == table.Name);
+        if (scenario == "DiscoveryUnique")
+        {
+            Assert.That(inspected.IsComplete, Is.True);
+            Assert.That(inspected.Coverage[SchemaFeature.UniqueConstraints], Is.EqualTo(MetadataCoverage.Available));
+            Assert.That(inspected.Diagnostics, Is.Empty);
+            Assert.That(inspected.Schema.Indexes, Is.Empty);
+            var metadata = await CreateMetadataReader()!.ReadAsync(database, new DiscoveryOptions
+            {
+                Schemas = [CurrentSchema(database)],
+                Tables = [new MetadataName(table.Name, CurrentSchema(database))],
+                Features = [.. basic, SchemaFeature.UniqueConstraints]
+            }, CancellationToken.None);
+            var keys = metadata.Tables.Single(t => t.Identity.Name == table.Name).UniqueConstraints;
+            // Some catalogs expose generated key names rather than the declared constraint names.
+            foreach (var key in keys)
+                Assert.That(actual.Constraints.OfType<UniquenessConstraint>().Single(c => c.Name == key.Name).Columns.Select(c => c.Name), Is.EqualTo(key.Columns));
+        }
         if (VerifyDiscoveredColumns(scenario, actual, table)) return;
         switch (scenario)
         {
@@ -594,7 +612,12 @@ public abstract class ProviderContract : SchemaContract
                 Assert.That(actual.Columns["amount"], Is.TypeOf<NumericColumn>());
                 Assert.That(((NumericColumn)actual.Columns["amount"]).Precision, Is.EqualTo(10)); Assert.That(((NumericColumn)actual.Columns["amount"]).Scale, Is.EqualTo(2)); break;
             case "DiscoveryPrimaryKey": Assert.That(actual.Constraints.OfType<PrimaryKeyConstraint>().Single().Columns.Keys, Is.EqualTo(new[] { "b", "a" })); break;
-            case "DiscoveryUnique": Assert.That(actual.Constraints.OfType<UniquenessConstraint>().Single().Columns.Select(c => c.Name), Is.EqualTo(new[] { "b", "a" })); break;
+            case "DiscoveryUnique":
+                var unique = actual.Constraints.OfType<UniquenessConstraint>().ToArray();
+                Assert.That(unique, Has.Length.EqualTo(2));
+                foreach (var expected in source.Constraints.OfType<UniquenessConstraint>())
+                    Assert.That(unique.Count(c => c.Columns.Select(column => column.Name).SequenceEqual(expected.Columns.Select(column => column.Name))), Is.EqualTo(1));
+                break;
             case "DiscoveryDefaults": Assert.That(actual.Columns["title"].DefaultValue, Is.EqualTo("hé")); Assert.That(actual.Columns["amount"].DefaultValue, Is.EqualTo(12.25m)); break;
             case "DiscoveryIdentity":
                 var identity = (IdentityColumnGeneration)actual.Columns["id"].Generation!;
