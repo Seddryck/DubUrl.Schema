@@ -50,6 +50,6 @@ public abstract class RendererEngine
     public string Render(object value)
     {
         using (var stream = Assembly.GetManifestResourceStream(TemplatePath) ?? throw new FileNotFoundException(TemplatePath))
-        return Engine.Render(stream, value).ReplaceLineEndings("\r\n");
+        return Engine.Render(stream, value).ReplaceLineEndings(Environment.NewLine);
     }
 }

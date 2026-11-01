@@ -442,7 +442,7 @@ public class SchemaScriptRendererTests
         {
             Assert.That(renderer.SupportsComments, Is.True);
             Assert.That(result, Does.Contain("COMMENT ON TABLE \"Customer\" IS 'Customer''s record';"));
-            Assert.That(result, Does.Contain("COMMENT ON COLUMN \"Customer\".\"DisplayName\" IS 'Owner''s display name\r\nPréféré';"));
+            Assert.That(result, Does.Contain($"COMMENT ON COLUMN \"Customer\".\"DisplayName\" IS 'Owner''s display name{Environment.NewLine}Préféré';"));
         });
     }
 
