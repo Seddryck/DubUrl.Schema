@@ -414,6 +414,12 @@ public sealed partial class SchemaDocumentValidator
                     $"Index references missing column '{column.Name}'.", $"{columnPath}.name"));
             }
 
+            ValidateDirection(column, columnPath, diagnostics);
+        }
+
+        private static void ValidateDirection(IndexColumnDocument column, string columnPath,
+            ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
             if (column.Direction is not null && column.Direction is not ("ascending" or "descending"))
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidIndex,
