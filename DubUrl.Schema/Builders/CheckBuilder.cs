@@ -75,4 +75,3 @@ public class CheckBuilder : ICheckBuilder, ICheckBuildable
         return new CheckConstraint(Left.Build(), Operator, Right.Build());
     }
 }
-

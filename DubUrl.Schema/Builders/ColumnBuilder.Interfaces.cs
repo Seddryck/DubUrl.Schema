@@ -118,4 +118,3 @@ public interface IColumnBuilder
     /// <returns>A Column object with the configured properties.</returns>
     Column Build();
 }
-

@@ -17,6 +17,7 @@ class DocsBundleTests(unittest.TestCase):
                 self.assertEqual(set(archive.namelist()), {"manifest.json", *manifest["files"]})
                 self.assertEqual(len(manifest["files"]), 13)
                 for name, checksum in manifest["files"].items():
+                    self.assertNotIn(b"\r\n", archive.read(name))
                     self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), checksum)
                 specification=json.loads(archive.read("content/schemas/schema-document/v1/schema.json"))
                 self.assertEqual(specification["$id"], "https://seddryck.github.io/DubUrl/schemas/schema-document/v1/schema.json")

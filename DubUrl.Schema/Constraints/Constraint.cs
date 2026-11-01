@@ -22,17 +22,3 @@ public abstract class Constraint : IConstraint
     protected Constraint(string? name)
         => Name = name;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

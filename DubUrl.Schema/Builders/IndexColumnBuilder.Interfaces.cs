@@ -24,4 +24,3 @@ public interface IIndexColumnBuilder
     /// <returns>An Index Column object with the configured properties.</returns>
     IndexColumn Build();
 }
-

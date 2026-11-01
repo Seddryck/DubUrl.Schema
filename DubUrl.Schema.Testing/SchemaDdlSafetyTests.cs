@@ -300,4 +300,3 @@ public class SchemaDdlSafetyTests
         finally { Execute(connection, "DROP TABLE IF EXISTS child; DROP TABLE IF EXISTS parent; DROP TABLE IF EXISTS checks"); }
     }
 }
-

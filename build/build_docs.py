@@ -17,7 +17,7 @@ def build(output, version, commit):
         if path.is_file():
             relative = path.relative_to(ROOT / "docs").as_posix()
             if relative.startswith(("_docs/", "schemas/", "assets/schema/")):
-                files["content/" + relative] = path.read_bytes()
+                files["content/" + relative] = path.read_bytes().replace(b"\r\n", b"\n")
     if "content/schemas/schema-document/v1/schema.json" not in files:
         raise ValueError("The stable v1 specification is missing")
     manifest = {"bundleFormatVersion": 1, "packageVersion": version, "sourceCommit": commit,

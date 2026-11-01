@@ -38,4 +38,3 @@ public class CheckExpressionBuilder : ICheckExpressionBuilder, ICheckExpressionV
         return Expression;
     }
 }
-
