@@ -17,6 +17,7 @@ public sealed class CommentRenderer : RendererEngine
             AddFormatter(helper.Key, helper.Value);
         AddFormatter("comment", value =>
         {
+            if (value is ColumnViewModel { RenderComment: false }) return string.Empty;
             var (table, column, description) = value switch
             {
                 TableViewModel item => (item.Identity, (string?)null, item.Description),

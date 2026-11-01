@@ -28,6 +28,7 @@
 		<!-- CI supplies the SemVer calculated by GitVersion. -->
         <Version Condition="'$(Version)' == ''">0.0.0</Version>
         <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.55.1</DubUrlVersion>
+        <DubUrlColumnDefinitionVersion Condition="'$(DubUrlColumnDefinitionVersion)' == ''">0.55.2-tableaware.2</DubUrlColumnDefinitionVersion>
         <RepositoryUrl>https://github.com/Seddryck/DubUrl.Schema</RepositoryUrl>
 		<Authors>Cédric L. Charlier</Authors>
 		<Owners>Seddryck</Owners>

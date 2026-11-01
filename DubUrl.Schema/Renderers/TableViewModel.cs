@@ -9,6 +9,7 @@ namespace DubUrl.Schema.Renderers;
 
 public class TableViewModel
 {
+    public PrimaryKeyConstraintViewModel? SharedPrimaryKey => Columns.Any(column => !column.RenderPrimaryKey) ? null : PrimaryKey;
     public string Name { get; }
     public DatabaseObjectName Identity { get; }
     public ColumnViewModel[] Columns { get; }
