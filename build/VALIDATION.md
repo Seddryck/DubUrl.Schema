@@ -46,3 +46,11 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - The shared fixture helper is internal and non-packable. CI transfers and publishes only the Schema and Documents library outputs; package validation expects exactly those two multi-target packages plus symbols.
 - Five artifact integrity tests, workflow lint, the full three-TFM Release solution build (zero warnings/errors), all three SQLite QA tests on .NET 10 (zero skips), and validation of both no-build packages passed.
 - Other database suites, full unit suites and consumer smoke programs were not rerun for this rename.
+
+## Mandatory seven-provider baseline
+
+- All seven database QA projects inherit SchemaContract. Added SQL Server, DuckDB, Oracle and MySQL baseline fixtures while retaining provider feature tests. Oracle explicitly declares table creation without DropTableIfExists and strips the SQL*Plus command terminator.
+- The runner accepts only net10.0 and requires both baseline tests to pass exactly once for every provider; MySQL's existing three feature cases run separately on the same disposable server.
+- Real .NET 10 database runs passed without skips: SQLite 3, DuckDB 4, MySQL 2 baseline + 3 feature cases, PostgreSQL 4, SQL Server 6, SingleStore 2, Oracle 3 (27 total). All 14 shared baseline results were required. Disposable containers and volumes were removed.
+- Five result-validation regression tests passed, including missing/duplicate/nonpassing baseline rejection. The runner rejected net8.0 before setup. Workflow lint and PowerShell parsing passed. The full solution built for all three TFMs with zero warnings/errors.
+- Database execution on .NET 8/9 remains excluded. Full unit/document suites, package smoke checks and publication were not repeated for this QA-only change.

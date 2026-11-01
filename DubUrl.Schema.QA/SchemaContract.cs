@@ -14,14 +14,18 @@ public abstract class SchemaContract
     protected abstract SchemaCapabilities Capabilities { get; }
     protected virtual string QuoteIdentifier(string identifier) => $"\"{identifier}\"";
 
-    [Test]
+    protected virtual string PrepareCommandText(string script) => script;
+    protected virtual string DropTableSql(string name)
+        => $"drop table {(Capabilities.HasFlag(SchemaCapabilities.DropTableIfExists) ? "if exists " : "")}{QuoteIdentifier(name)}";
+
+    [Test, Category("SchemaBaseline")]
     public void DeclaresCreateTableCapability()
         => Assert.That(Capabilities.HasFlag(SchemaCapabilities.CreateTable), Is.True);
 
-    [Test]
+    [Test, Category("SchemaBaseline")]
     public void RendersAndDeploysSchema()
     {
-        var tableName = $"DubUrlQa_{Guid.NewGuid():N}";
+        var tableName = $"DubUrlQa_{Guid.NewGuid().ToString("N")[..20]}";
         var schema = new Schema(
         [
             new Table(tableName,
@@ -34,12 +38,14 @@ public abstract class SchemaContract
 
         using var connection = CreateConnection();
         connection.Open();
+        var created = false;
         try
         {
             using (var create = connection.CreateCommand())
             {
-                create.CommandText = script;
+                create.CommandText = PrepareCommandText(script);
                 create.ExecuteNonQuery();
+                created = true;
             }
 
             using var query = connection.CreateCommand();
@@ -48,9 +54,12 @@ public abstract class SchemaContract
         }
         finally
         {
-            using var drop = connection.CreateCommand();
-            drop.CommandText = $"drop table if exists {QuoteIdentifier(tableName)}";
-            drop.ExecuteNonQuery();
+            if (created)
+            {
+                using var drop = connection.CreateCommand();
+                drop.CommandText = DropTableSql(tableName);
+                drop.ExecuteNonQuery();
+            }
         }
     }
 }

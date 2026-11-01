@@ -1,14 +1,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
-    [ValidateSet('net8.0','net9.0','net10.0')][string]$Framework = 'net10.0',
+    [ValidateSet('net10.0')][string]$Framework = 'net10.0',
     [string]$DubUrlVersion = '0.55.1',
     [string]$Version = '0.0.0'
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $project = Join-Path $PSScriptRoot "DubUrl.Schema.$Database.QA/DubUrl.Schema.$Database.QA.csproj"
-if ($Database -eq 'MySql') { $project = Join-Path $root 'DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj' }
 $results = Join-Path $root "artifacts/results/$Database/$Framework"
 if (Test-Path $results) { throw 'Choose a clean results directory before running QA again.' }
 $compose = Join-Path $PSScriptRoot "infrastructure/$($Database.ToLowerInvariant())/compose.yaml"
@@ -50,11 +49,19 @@ try {
             if ($LASTEXITCODE) { throw 'Creating the SingleStore QA database failed.' }
         }
     }
-    $filter = if ($Database -eq 'MySql') { @('--filter', 'TestCategory=MySqlIntegration') } else { @() }
-    dotnet test $project @filter -c Release -f $Framework --no-build --no-restore --logger trx --results-directory $results --nologo
+    $fixtureResults = Join-Path $results 'fixtures'
+    dotnet test $project -c Release -f $Framework --no-build --no-restore --logger trx --results-directory $fixtureResults --nologo
     if ($LASTEXITCODE) { throw 'Schema database tests failed.' }
-    python build/assert_results.py $results
+    python build/assert_results.py $fixtureResults --require-schema-baseline
     if ($LASTEXITCODE) { throw 'Required schema database results were missing or skipped.' }
+    if ($Database -eq 'MySql') {
+        $features = Join-Path $root 'DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj'
+        $featureResults = Join-Path $results 'features'
+        dotnet test $features -c Release -f $Framework -p:DubUrlVersion=$DubUrlVersion -p:Version=$Version --filter 'TestCategory=MySqlIntegration' --logger trx --results-directory $featureResults --nologo
+        if ($LASTEXITCODE) { throw 'MySQL feature tests failed.' }
+        python build/assert_results.py $featureResults
+        if ($LASTEXITCODE) { throw 'Required MySQL feature results were missing or skipped.' }
+    }
 }
 finally {
     if ($container) {

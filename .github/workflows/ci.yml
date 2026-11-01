@@ -194,6 +194,8 @@ jobs:
           python-version: '3.13'
       - name: Test installed SDK/runtime selection
         run: ./build/Test-DotNetSetup.ps1
+      - name: Test required shared database baseline results
+        run: python build/test_assert_results.py
       - name: Test library artifact transfer contract
         run: python -m unittest discover -s build -p test_library_artifacts.py
       - name: Test documentation bundle contract
