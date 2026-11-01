@@ -38,4 +38,3 @@ branch with `-p:Version=0.55.2-tableaware.2 -o <candidate-feed>`, then restore/b
 Schema with `-p:RestoreAdditionalProjectSources=<candidate-feed>`. No user or
 machine-wide NuGet configuration changes are required. Run database QA only with
 `-f net10.0`.
-
