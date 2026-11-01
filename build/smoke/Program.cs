@@ -1,0 +1,14 @@
+using System.Text;
+using DubUrl.Querying.Dialects;
+using DubUrl.Provider.Sqlite.Sql;
+using DubUrl.Schema;
+using DubUrl.Schema.Documents;
+const string json = """{"version":1,"tables":[{"identity":{"name":"sample"},"columns":[{"name":"id","type":"int32"}]}]}""";
+using var stream = new MemoryStream(Encoding.UTF8.GetBytes(json));
+var document = new SchemaDocumentReader().Read(stream, SchemaDocumentFormat.Json);
+var diagnostics = new SchemaDocumentValidator().Validate(document);
+if (diagnostics.Any(d => d.Severity == SchemaDocumentDiagnosticSeverity.Error)) throw new Exception("Invalid example document");
+var builder = new DialectRegistryBuilder(); builder.AddDialect<SqliteDialect>(["sqlite"]);
+var sql = new SchemaScriptRenderer(builder.Build().Get<SqliteDialect>()).Render(new SchemaDocumentMapper().Map(document));
+if (!sql.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase)) throw new Exception("Missing SQL/templates");
+Console.WriteLine("Package-only schema document rendering passed.");

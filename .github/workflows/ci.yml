@@ -1,0 +1,266 @@
+name: Schema CI and release
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the tested version from version.json (main only)
+        type: boolean
+        default: false
+      duburl_version:
+        description: Optional published DubUrl core/provider version for compatibility testing (never publishes)
+        type: string
+        default: ''
+permissions:
+  contents: read
+concurrency:
+  group: schema-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+defaults:
+  run:
+    shell: pwsh
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.metadata.outputs.version }}
+      duburl: ${{ steps.metadata.outputs.duburl }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: metadata
+        env:
+          CANDIDATE: ${{ inputs.duburl_version }}
+        run: |
+          $metadata = Get-Content version.json -Raw | ConvertFrom-Json
+          $candidate = $env:CANDIDATE
+          $duburl = if ($candidate) { $candidate } else { $metadata.dubUrlVersion }
+          foreach ($value in @($metadata.version, $duburl)) {
+            if ($value -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
+          }
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          if (($props.Project.PropertyGroup.Version | Where-Object { $_ }).InnerText -ne $metadata.version) { throw 'Build version and release metadata disagree.' }
+          "version=$($metadata.version)" >> $env:GITHUB_OUTPUT
+          "duburl=$duburl" >> $env:GITHUB_OUTPUT
+
+  unit:
+    needs: version
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { framework: net8.0, sdk: 8.0.416 }
+          - { framework: net9.0, sdk: 9.0.308 }
+          - { framework: net10.0, sdk: 10.0.401 }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ matrix.sdk }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Build solution
+        run: |
+          dotnet restore DubUrl.Schema.sln -p:TargetFramework=${{ matrix.framework }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
+          if ($LASTEXITCODE) { throw 'Restore failed.' }
+          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.version }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
+          if ($LASTEXITCODE) { throw 'Build failed.' }
+      - name: Unit and document specification tests
+        run: |
+          foreach ($project in @('DubUrl.Schema.Testing','DubUrl.Schema.Documents.Testing')) {
+            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --filter 'TestCategory!=MySqlIntegration' --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
+            if ($LASTEXITCODE) { throw "Tests failed for $project." }
+            python build/assert_results.py "artifacts/results/$project"
+            if ($LASTEXITCODE) { throw 'Missing test results.' }
+          }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: unit-${{ matrix.framework }}
+          path: artifacts/results
+          if-no-files-found: error
+
+  coverage:
+    needs: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: unit-*
+          path: artifacts/coverage
+      - run: python build/check_coverage.py artifacts/coverage
+
+  database:
+    needs: version
+    name: ${{ matrix.database }} (${{ matrix.framework }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [PostgreSql, Sqlite, DuckDb, SqlServer, Oracle, SingleStore, MySql]
+        framework: [net8.0, net9.0, net10.0]
+        include:
+          - { framework: net8.0, sdk: 8.0.416 }
+          - { framework: net9.0, sdk: 9.0.308 }
+          - { framework: net10.0, sdk: 10.0.401 }
+          - { database: PostgreSql, runner: ubuntu-latest }
+          - { database: Sqlite, runner: windows-latest }
+          - { database: DuckDb, runner: windows-latest }
+          - { database: SqlServer, runner: ubuntu-latest }
+          - { database: Oracle, runner: ubuntu-latest }
+          - { database: SingleStore, runner: ubuntu-latest }
+          - { database: MySql, runner: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: ${{ matrix.sdk }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Run isolated database fixtures
+        run: ./QA/run.ps1 -Database '${{ matrix.database }}' -Framework '${{ matrix.framework }}' -DubUrlVersion '${{ needs.version.outputs.duburl }}'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: qa-${{ matrix.database }}-${{ matrix.framework }}
+          path: artifacts/results
+          if-no-files-found: error
+
+  docs:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Test documentation bundle contract
+        run: python -m unittest discover -s build -p test_docs_bundle.py
+      - name: Build documentation bundle
+        run: python build/build_docs.py --version '${{ needs.version.outputs.version }}'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: schema-docs
+          path: |
+            artifacts/schema-docs.zip
+            artifacts/schema-docs.zip.sha256
+          if-no-files-found: error
+
+  package:
+    needs: [version, unit, coverage, database, docs]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.416
+            9.0.308
+            10.0.401
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Pack and validate libraries
+        run: |
+          foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents','DubUrl.Schema.Testing.Contracts')) {
+            dotnet pack "$project/$project.csproj" -c Release -p:Version=${{ needs.version.outputs.version }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
+            if ($LASTEXITCODE) { throw 'Packaging failed.' }
+          }
+          python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.version }}'
+          if ($LASTEXITCODE) { throw 'Package validation failed.' }
+      - name: Test package-only consumers
+        run: |
+          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.version }}
+          if ($LASTEXITCODE) { throw 'Consumer restore failed.' }
+          foreach ($framework in @('net8.0','net9.0','net10.0')) {
+            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.version }}
+            if ($LASTEXITCODE) { throw 'Consumer smoke failed.' }
+          }
+      - uses: actions/download-artifact@v7
+        with:
+          name: schema-docs
+          path: artifacts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-artifacts
+          path: |
+            artifacts/nuget/*.nupkg
+            artifacts/nuget/*.snupkg
+            artifacts/schema-docs.zip
+            artifacts/schema-docs.zip.sha256
+          if-no-files-found: error
+
+  publish:
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && inputs.duburl_version == '' && github.ref == 'refs/heads/main'
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v7
+        with:
+          name: release-artifacts
+          path: artifacts
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+      - name: Validate artifacts and release identity
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if (Test-Path appveyor.yml) { throw 'Remove the legacy publishing workflow before releasing.' }
+          python build/validate_packages.py artifacts/nuget $env:VERSION
+          if ($LASTEXITCODE) { throw 'Package validation failed.' }
+          $expected = (Get-Content artifacts/schema-docs.zip.sha256).Split(' ')[0]
+          if ((Get-FileHash artifacts/schema-docs.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Docs checksum mismatch.' }
+          git fetch origin --tags
+          if ($LASTEXITCODE) { throw 'Fetching tags failed.' }
+          $existing = git rev-parse --verify "refs/tags/v$env:VERSION^{commit}" 2>$null
+          if ($LASTEXITCODE -eq 0 -and $existing -ne '${{ github.sha }}') { throw 'Release version already belongs to another commit.' }
+          if (-not $existing) {
+            git tag "v$env:VERSION" '${{ github.sha }}'
+            git push origin "v$env:VERSION"
+            if ($LASTEXITCODE) { throw 'Reserving release tag failed.' }
+          }
+      - uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        id: nuget
+        with:
+          user: ${{ vars.NUGET_USER || 'Seddryck' }}
+      - name: Publish tested NuGet artifacts
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+        run: |
+          foreach ($package in Get-ChildItem artifacts/nuget -Filter *.nupkg) {
+            dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+            if ($LASTEXITCODE) { throw 'NuGet publication failed.' }
+          }
+      - name: Publish docs and release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          gh release view "v$env:VERSION" --repo '${{ github.repository }}' 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "v$env:VERSION" --repo '${{ github.repository }}' --verify-tag --title "DubUrl.Schema $env:VERSION" --generate-notes artifacts/schema-docs.zip artifacts/schema-docs.zip.sha256
+            if ($LASTEXITCODE) { throw 'Release creation failed.' }
+          }
+          else {
+            New-Item -ItemType Directory -Force artifacts/existing-release | Out-Null
+            gh release download "v$env:VERSION" --repo '${{ github.repository }}' --pattern schema-docs.zip.sha256 --dir artifacts/existing-release
+            if ($LASTEXITCODE) { throw 'Could not verify the existing documentation release.' }
+            if ((Get-Content artifacts/existing-release/schema-docs.zip.sha256 -Raw) -ne (Get-Content artifacts/schema-docs.zip.sha256 -Raw)) {
+              throw 'Existing release has different documentation; refusing to replace it.'
+            }
+          }

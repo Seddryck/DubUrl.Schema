@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject></PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="9.0.21" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="NUnit" Version="5.0.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageReference Include="DubUrl.Provider.SqlServer" Version="$(DubUrlVersion)" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
+    <ProjectReference Include="../../DubUrl.Schema.Testing.Contracts/DubUrl.Schema.Testing.Contracts.csproj" />
+    <ProjectReference Include="../../DubUrl.Schema.Documents/DubUrl.Schema.Documents.csproj" />
+  </ItemGroup>
+</Project>
