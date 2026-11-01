@@ -13,7 +13,7 @@ The libraries and reusable NUnit contracts are portable multi-target NuGet packa
 
 Successful pushes to `main` reserve a `v<SemVer>` tag for every tested package version and publish the NuGet packages automatically, following Expressif's tag policy. Those tags allow successive patch releases to advance (`0.100.0`, `0.100.1`, `0.100.2`). As in both sibling repositories, only a zero patch number creates a GitHub release with `schema-docs.zip`; patch releases publish to NuGet without a GitHub release. No manual `publish=true` switch or synchronized version files remain.
 
-The pipeline builds/tests each supported TFM, runs the real-database matrix, checks coverage, packs and smoke-tests consumers, and then recalculates GitVersion after refreshing main/tags. It rejects tested-commit/version drift and tag collisions, including a concurrent tag creation at the wrong commit. Publication consumes the already-tested artifacts. Configure NuGet trusted publishing for Seddryck/DubUrl.Schema, workflow `ci.yml`, environment `release`; `NUGET_USER` can override the default Seddryck account. The release guard blocks publication while a legacy `appveyor.yml` exists.
+The pipeline builds/tests each supported TFM, runs the seven real-database jobs on .NET 10 only, checks coverage, packs and smoke-tests consumers, and then recalculates GitVersion after refreshing main/tags. It rejects tested-commit/version drift and tag collisions, including a concurrent tag creation at the wrong commit. Publication consumes the already-tested artifacts. Configure NuGet trusted publishing for Seddryck/DubUrl.Schema, workflow `ci.yml`, environment `release`; `NUGET_USER` can override the default Seddryck account. The release guard blocks publication while a legacy `appveyor.yml` exists.
 
 For local versioned packaging, use GitVersion 6.6.0 (the version pinned in CI):
 
@@ -34,3 +34,11 @@ Local unversioned builds use `0.0.0`, as in DubUrl. There is no need to modify b
 Merge this repository first to release the initial 0.100.0 automatically, then update the consuming DubUrl PR's package version and CLI/worker lockfiles. Pin the actual published ZIP checksum/source commit in `docs/schema-docs.lock.json` (a squash merge changes the commit). Build with `python build/import_schema_docs.py`, which stages the complete site under `artifacts/docs-site` while retaining the existing URLs and JSON specification identity. Subsequent website updates pin a zero-patch GitHub release; NuGet-only patch versions do not imply a new documentation release.
 
 Dispatch CI with `duburl_version` to test a candidate DubUrl/core provider package set. Manual dispatches never publish, matching the main-branch push boundary in the sibling repositories.
+
+## Packaging the unit-matrix outputs
+
+Each successful unit job uploads the three library DLLs and portable PDBs for its TFM, optional documentation/dependency files, and a SHA-256 manifest identifying the version and source commit. The package job downloads all three artifacts into their original project/bin/Release/TFM paths and verifies their identities/hashes. No framework-scoped obj or NuGet cache is transferred.
+
+Packaging restores the complete multi-target project metadata on its own runner, then runs `dotnet pack --no-build --no-restore`. It does not rebuild the libraries. After packing, every DLL in the NuGet packages and every PDB in the symbol packages must exactly match the unit-matrix manifests. The package-only consumer smoke programs are built separately on all three runtimes.
+
+Only .NET 10 runs live database tests, including the embedded DuckDB integration cases in the otherwise multi-target unit suite. Package contents retain all three supported TFMs.

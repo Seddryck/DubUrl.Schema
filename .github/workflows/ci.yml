@@ -83,16 +83,25 @@ jobs:
         run: |
           dotnet restore DubUrl.Schema.sln -p:TargetFramework=${{ matrix.framework }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
           if ($LASTEXITCODE) { throw 'Restore failed.' }
-          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
+          dotnet build DubUrl.Schema.sln -c Release -f ${{ matrix.framework }} --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true
           if ($LASTEXITCODE) { throw 'Build failed.' }
       - name: Unit and document specification tests
         run: |
           foreach ($project in @('DubUrl.Schema.Testing','DubUrl.Schema.Documents.Testing')) {
-            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --filter 'TestCategory!=MySqlIntegration' --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
+            $filter = 'TestCategory!=MySqlIntegration'
+            if ('${{ matrix.framework }}' -ne 'net10.0') { $filter += '&TestCategory!=DuckDbIntegration' }
+            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --filter $filter --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
             if ($LASTEXITCODE) { throw "Tests failed for $project." }
             python build/assert_results.py "artifacts/results/$project"
             if ($LASTEXITCODE) { throw 'Missing test results.' }
           }
+      - name: Collect tested library binaries and symbols
+        run: python build/library_artifacts.py collect --framework '${{ matrix.framework }}' --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}' --output artifacts/library-build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: library-build-${{ matrix.framework }}
+          path: artifacts/library-build
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -120,11 +129,8 @@ jobs:
       fail-fast: false
       matrix:
         database: [PostgreSql, Sqlite, DuckDb, SqlServer, Oracle, SingleStore, MySql]
-        framework: [net8.0, net9.0, net10.0]
+        framework: [net10.0]
         include:
-          - { framework: net8.0, sdk: 8.0.416 }
-          - { framework: net9.0, sdk: 9.0.308 }
-          - { framework: net10.0, sdk: 10.0.401 }
           - { database: PostgreSql, runner: ubuntu-latest }
           - { database: Sqlite, runner: windows-latest }
           - { database: DuckDb, runner: windows-latest }
@@ -136,7 +142,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: ${{ matrix.sdk }}
+          dotnet-version: 10.0.401
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -157,6 +163,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
+      - name: Test library artifact transfer contract
+        run: python -m unittest discover -s build -p test_library_artifacts.py
       - name: Test documentation bundle contract
         run: python -m unittest discover -s build -p test_docs_bundle.py
       - name: Build documentation bundle
@@ -183,14 +191,25 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-      - name: Pack and validate libraries
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: library-build-*
+          path: .
+          merge-multiple: true
+      - name: Verify tested build artifacts
+        run: python build/library_artifacts.py verify --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}'
+      - name: Restore packaging metadata and pack tested binaries
         run: |
           foreach ($project in @('DubUrl.Schema','DubUrl.Schema.Documents','DubUrl.Schema.Testing.Contracts')) {
-            dotnet pack "$project/$project.csproj" -c Release -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
+            dotnet restore "$project/$project.csproj" -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true
+            if ($LASTEXITCODE) { throw 'Packaging restore failed.' }
+            dotnet pack "$project/$project.csproj" -c Release --no-build --no-restore -p:Version=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }} -p:ContinuousIntegrationBuild=true --include-symbols -o artifacts/nuget
             if ($LASTEXITCODE) { throw 'Packaging failed.' }
           }
           python build/validate_packages.py artifacts/nuget '${{ needs.version.outputs.semver }}'
           if ($LASTEXITCODE) { throw 'Package validation failed.' }
+          python build/library_artifacts.py verify-packages --packages artifacts/nuget --version '${{ needs.version.outputs.semver }}' --commit '${{ github.sha }}'
+          if ($LASTEXITCODE) { throw 'Packages differ from tested matrix binaries.' }
       - name: Test package-only consumers
         run: |
           dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.semver }}

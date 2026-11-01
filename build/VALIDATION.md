@@ -1,31 +1,28 @@
-# Extraction validation (2026-11-01)
+# Migration validation (2026-11-01)
 
-Validated on Windows with the installed .NET 11 preview SDK and .NET 8, 9 and 10 runtimes. CI selects the matching stable SDK for each target framework.
+Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10 runtimes. Hosted CI selects the stable SDK matching each unit target framework and .NET 10 for database jobs.
 
-## Passed locally
+## Current unit matrix and artifact reuse
 
-- Full `DubUrl.Schema.sln` Release build for net8.0, net9.0 and net10.0, zero warnings/errors.
-- `DubUrl.Schema.Testing`, excluding `MySqlIntegration`: 181 passed on each of net8.0, net9.0 and net10.0; nonzero TRX results explicitly validated.
-- `DubUrl.Schema.Documents.Testing`: 127 passed on each of net8.0, net9.0 and net10.0, including the JSON specification and bundled examples.
-- Real-database QA on net10.0: PostgreSQL 4, SQLite 3, DuckDB 2, SQL Server 4, Oracle 1, SingleStore 2, and MySQL 3 passed. No live tests skipped. Container tests used disposable databases and cleaned up their containers/volumes. Embedded tests used in-memory or temporary files.
-- Three multi-target NuGet packages and their symbol packages packed and validated. Package-only consumer restored from a local feed and rendered a schema on all three TFMs.
-- Two documentation producer tests: byte-for-byte reproducibility, complete manifest hashes, stable specification identity and full source-commit requirement.
-- `actionlint` for the new workflow. The coverage gate was also verified against all three downloaded hosted unit artifacts, requiring one canonical report per project/TFM and excluding duplicate VSTest `In/` attachments.
-- Main repository integration: assembled Jekyll site builds; all 10 imported page URLs/local links and stable specification URL validate. Existing example verification compiled 31 snippet groups and executed 26.
+- Scoped Release/ContinuousIntegrationBuild solution builds passed for net8.0, net9.0 and net10.0 using the calculated GitVersion SemVer.
+- Schema tests: 176 passed on net8.0, 176 on net9.0, and 181 on net10.0, with no skips. Five embedded DuckDB integration cases are excluded on net8.0/net9.0 and run on net10.0. MySQL integration cases run in their dedicated .NET 10 database job.
+- Document/specification tests: 127 passed on each of the three TFMs, with no skips. Every run produced a validated nonzero TRX result.
+- Five library-artifact regression tests passed: complete binary/symbol transfer, version/commit mismatch rejection, changed build/package payload rejection, unexpected manifest paths and required PDBs.
+- Collected binaries and PDBs for all three package projects and all three TFMs. A fresh checkout received only those files and their manifests, without unit-job obj state. Deliberately invalid fixture source was added to each package project. Full multi-target metadata restore plus `dotnet pack --no-build --no-restore` succeeded, proving packaging did not compile the projects or their references.
+- All three NuGet packages and symbol packages validated. Every packaged DLL and PDB exactly matched its unit-matrix SHA-256 manifest. Package-only consumers passed on net8.0/net9.0/net10.0 with a fresh NuGet cache, preventing an older same-version local package from satisfying the check.
+- `actionlint` passed for the revised workflow. CI now has seven database jobs on .NET 10 only, while unit builds/tests and package consumer checks retain all three TFMs.
 
-## Not run locally
+## Earlier migration checks retained
 
-- Real-database QA on net8.0/net9.0; CI includes all seven databases on all three TFMs.
-- Hosted Ubuntu/Windows CI jobs, cross-platform package execution outside Windows, and actual NuGet/GitHub publication.
-- Unrelated provider, authentication and bulk-copy suites in the main repository; see its migration validation record for the focused integration tests.
+- Real databases on net10.0: PostgreSQL 4, SQLite 3, DuckDB 2, SQL Server 4, Oracle 1, SingleStore 2 and MySQL 3 passed without skips. Disposable containers/volumes and embedded files were cleaned up.
+- Six GitVersion 6.6.0 real-history cases passed: first 0.100.0 after extraction/fix/CI commits, tagged patch progression, feature/minor then patch, breaking major, explicit minor annotation and beta feature branch. Tested-commit/version/tag-reuse/collision guards passed.
+- Two documentation producer tests passed for deterministic ZIP metadata/content and complete manifest hashes with the stable specification identity. Windows and Linux produced identical ZIP bytes for the same commit/version.
+- The canonical coverage gate passed against all three downloaded hosted unit artifacts, excluding duplicate VSTest In/ attachments.
+- The main repository's assembled Jekyll website built; all 10 imported page URLs/local links and the JSON specification URL validated. Its example verifier compiled 31 snippet groups and executed 26. Main integration checks are recorded separately in build/schema-migration-validation.md in DubUrl.
 
-An initial net10 unit run skipped the three environment-dependent MySQL cases. They were subsequently run successfully in the dedicated required MySQL database job. The CI unit filter excludes those cases, and every live job rejects skipped or empty test results.
+## Not run for the latest CI-only follow-up
 
-## GitVersion follow-up
-
-- Compared DubUrl and Expressif `GitVersion.yml` and automatic main release/tag workflows. Schema inherits DubUrl's commit/branch configuration and Expressif's tag-per-published-version behavior; GitHub releases remain zero-patch only.
-- GitVersion 6.6.0 real-history regression tests: initial 0.100.0 after extraction/fix/CI commits; consecutive tagged patch releases; feature/minor then patch; breaking major; explicit minor annotation; beta feature branch. All six passed.
-- Tested-commit, version-drift, tag-reuse and tag-collision guards passed.
-- Full Release solution build on net8.0/net9.0/net10.0 with calculated SemVer passed with zero warnings/errors. Three calculated-version packages and symbols validated; package-only consumers passed on all three frameworks.
-- Documentation bundle tests and workflow lint passed. Database and full domain test suites were not rerun for this versioning-only change.
-- No packages, releases or remote tags were published during validation.
+- External database suites were not rerun; their SQL/fixtures are unchanged. Embedded DuckDB cases did run in the revised .NET 10 unit entry.
+- Database tests on net8.0/net9.0 are intentionally excluded from CI and were not run locally.
+- GitVersion, release guard and documentation producer tests were not repeated for artifact-transfer changes; their earlier results are listed above.
+- Unrelated main-repository suites, site deployment, package publication and remote tag creation were not performed.

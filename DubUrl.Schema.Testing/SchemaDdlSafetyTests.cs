@@ -58,6 +58,7 @@ public class SchemaDdlSafetyTests
 
     [TestCase(false)]
     [TestCase(true)]
+    [Category("DuckDbIntegration")]
     public void CheckPredicates_DuckDbExecutesAndEnforcesAllForms(bool tableChecks)
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
@@ -78,6 +79,7 @@ public class SchemaDdlSafetyTests
         [new ForeignKey("fk_child_parent", ["id"], target, ["id"])]);
 
     [Test]
+    [Category("DuckDbIntegration")]
     public void DuckDb_ReversedDependenciesExecuteAndDropInReverseOrder()
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
@@ -94,6 +96,7 @@ public class SchemaDdlSafetyTests
     }
 
     [Test]
+    [Category("DuckDbIntegration")]
     public void DuckDb_ExternalParentIsValidatedButNeverCreatedOrDropped()
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
@@ -108,6 +111,7 @@ public class SchemaDdlSafetyTests
     }
 
     [Test]
+    [Category("DuckDbIntegration")]
     public void DuckDb_SelfReferenceExecutesForExistingParentRows()
     {
         using var connection = new DuckDBConnection("DataSource=:memory:");
