@@ -13,7 +13,7 @@ public sealed partial class SqliteSchemaTests
         new Dictionary<string,FeatureExpectation>
         {
             ["ReplaceTable"] = FeatureExpectation.Supported,
-            ["QuotedIdentifiers"] = new(ExpectedOutcome.DatabaseRejects,"The published SQLite identifier formatter leaves literal punctuation unquoted.","1"),
+            ["QuotedIdentifiers"] = FeatureExpectation.Supported,
             ["TableComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
             ["ColumnComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
             ["EmptyComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
@@ -61,7 +61,7 @@ public sealed partial class SqliteSchemaTests
             ["DiscoveryClosure"] = FeatureExpectation.Supported,
             ["DiscoveryPartial"] = FeatureExpectation.Supported,
             ["DiscoveryStrict"] = FeatureExpectation.Supported,
-            ["DiscoveryRoundTrip"] = new(ExpectedOutcome.RendererRejects,"SQLite discovery returns a Schema qualifier that its renderer rejects.","Schema"),
+            ["DiscoveryRoundTrip"] = FeatureExpectation.Supported,
             ["NativeVarcharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
             ["NativeCharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
             ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
@@ -76,6 +76,7 @@ public sealed partial class SqliteSchemaTests
     protected override void ExecuteScript(DbConnection connection,string script) => QaSql.Execute(connection,script);
     protected override string DatabaseErrorCode(DbException exception) => ((SqliteException)exception).SqliteErrorCode.ToString();
     protected override string CurrentSchema(DbConnection connection) => "main";
+    protected override DiscoveryOptions DiscoveryScope(string name) => new() { Databases = [name] };
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,database:CurrentSchema(connection));
     protected override ISchemaMetadataReader? CreateMetadataReader() => new SqliteMetadataReader();
     protected override int? ExpectedDiscoveredStringLength => 40;
@@ -83,9 +84,9 @@ public sealed partial class SqliteSchemaTests
     protected override PublicDatabase CreatePublicDatabase() => QaSql.FileDatabase("sqlite",SqliteFactory.Instance,"Microsoft.Data.Sqlite",SqliteConnection.ClearAllPools);
     protected override string ExpressionIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ((UPPER({column})))";
     protected override string FilteredIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ({column}) WHERE {column}>0";
-    protected override IReadOnlyList<ColumnFact> ReadColumns(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderColumns(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
-    protected override IReadOnlyList<IndexFact> ReadIndexes(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderIndexes(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
-    protected override CommentFact ReadComments(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderComments(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
+    protected override IReadOnlyList<ColumnFact> ReadColumns(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderColumns(connection,new SqliteMetadataReader(),null,table.Name,CurrentSchema(connection));
+    protected override IReadOnlyList<IndexFact> ReadIndexes(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderIndexes(connection,new SqliteMetadataReader(),null,table.Name,CurrentSchema(connection));
+    protected override CommentFact ReadComments(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderComments(connection,new SqliteMetadataReader(),null,table.Name,CurrentSchema(connection));
     protected override bool ObjectExists(DbConnection connection,DatabaseObjectName name,bool view)
         => Convert.ToInt64(QaSql.Rows(connection,"SELECT COUNT(*) FROM sqlite_schema WHERE name=@name AND type=@kind",("name",name.Name),("kind",view ? "view" : "table")).Single()[0])!=0;
 }

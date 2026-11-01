@@ -8,10 +8,16 @@ public sealed class ForeignKeyConstraintViewModel
     public string[] SourceColumns { get; }
     public string TargetTableName { get; }
     public DatabaseObjectName TargetTable { get; }
+    public DatabaseObjectName? SourceTable { get; }
     public string[] TargetColumns { get; }
 
     public ForeignKeyConstraintViewModel(ForeignKeyConstraint constraint)
+        : this(constraint, null)
+    { }
+
+    public ForeignKeyConstraintViewModel(ForeignKeyConstraint constraint, DatabaseObjectName? sourceTable)
     {
+        SourceTable = sourceTable;
         Name = constraint.Name!;
         SourceColumns = constraint.SourceColumns.ToArray();
         TargetTableName = constraint.TargetTableName;

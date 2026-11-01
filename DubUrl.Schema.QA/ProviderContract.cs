@@ -19,6 +19,7 @@ public abstract class ProviderContract : SchemaContract
     protected abstract void ExecuteScript(DbConnection connection, string script);
     protected abstract string DatabaseErrorCode(DbException exception);
     protected abstract string CurrentSchema(DbConnection connection);
+    protected virtual DiscoveryOptions DiscoveryScope(string name) => new() { Schemas = [name] };
     protected abstract DatabaseObjectName QualifiedName(DbConnection connection, string name);
     protected abstract CommentFact ReadComments(DbConnection connection, DatabaseObjectName table);
     protected abstract IReadOnlyList<ColumnFact> ReadColumns(DbConnection connection, DatabaseObjectName table);
@@ -414,15 +415,19 @@ public abstract class ProviderContract : SchemaContract
     private async Task<SchemaInspectionResult> Inspect(SchemaFeature[] features, Table[]? selected = null, bool partial = true, bool closure = false)
     {
         var reader = CreateMetadataReader() ?? throw new InvalidOperationException("A supported discovery test requires a real reader.");
-        var result = await new SchemaInspector().InspectAsync(database, reader, new DiscoveryOptions
+        var result = await new SchemaInspector().InspectAsync(database, reader, DiscoveryScope(CurrentSchema(database)) with
         {
-            Schemas = [CurrentSchema(database)],
-            Tables = selected?.Select(t => new MetadataName(t.Name, CurrentSchema(database))).ToArray() ?? [],
+            Tables = selected?.Select(t => DiscoveryName(t.Name)).ToArray() ?? [],
             Features = features,
             AllowPartial = partial,
             IncludeReferencedTables = closure
         });
         Assert.That(result.Diagnostics.Select(d => d.Code), Does.Not.Contain("SDI002"), "Catalog access must succeed."); return result;
+    }
+    private MetadataName DiscoveryName(string name)
+    {
+        var identity = QualifiedName(database, name);
+        return new(identity.Name, identity.Schema, identity.Database, identity.Catalog);
     }
     private async Task Discovery(string scenario)
     {
@@ -564,10 +569,9 @@ public abstract class ProviderContract : SchemaContract
             Assert.That(inspected.Coverage[SchemaFeature.UniqueConstraints], Is.EqualTo(MetadataCoverage.Available));
             Assert.That(inspected.Diagnostics, Is.Empty);
             Assert.That(inspected.Schema.Indexes, Is.Empty);
-            var metadata = await CreateMetadataReader()!.ReadAsync(database, new DiscoveryOptions
+            var metadata = await CreateMetadataReader()!.ReadAsync(database, DiscoveryScope(CurrentSchema(database)) with
             {
-                Schemas = [CurrentSchema(database)],
-                Tables = [new MetadataName(table.Name, CurrentSchema(database))],
+                Tables = [DiscoveryName(table.Name)],
                 Features = [.. basic, SchemaFeature.UniqueConstraints]
             }, CancellationToken.None);
             var keys = metadata.Tables.Single(t => t.Identity.Name == table.Name).UniqueConstraints;
@@ -585,8 +589,8 @@ public abstract class ProviderContract : SchemaContract
             case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
             case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;
             case "DiscoverySchemaFilter":
-                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity.Schema == CurrentSchema(database)), Is.True);
-                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, new DiscoveryOptions { Schemas = [Name("absent")], Features = basic });
+                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity == QualifiedName(database, t.Name)), Is.True);
+                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, DiscoveryScope(Name("absent")) with { Features = basic });
                 Assert.That(excluded.Schema!.Tables, Is.Empty); break;
             case "DiscoveryRoundTrip":
                 Execute(DropTableSql(table.Name)); if (!Deploy(new(inspected.Schema.Tables.Values.ToArray()))) return;

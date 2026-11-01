@@ -128,9 +128,9 @@ public class CreateSchemaRenderer : RendererEngine
 
         var expression = constraint.Expression switch
         {
-            ColumnIdentityExpression column => dialect.Renderer.Render(column.Name, "identity"),
+            ColumnIdentityExpression column => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, column.Name),
             FunctionColumnIdentityExpression function =>
-                $"{SqlExpressionRenderer.ResolveFunction(function.Function, dialect.SqlFunctionMapper)}({dialect.Renderer.Render(function.Name, "identity")})",
+                $"{SqlExpressionRenderer.ResolveFunction(function.Function, dialect.SqlFunctionMapper)}({dialect.SchemaSqlRenderer.RenderIdentifier(dialect, function.Name)})",
             _ => throw new ArgumentException(
                 $"Expression type '{constraint.Expression.GetType().Name}' is not supported for membership checks.",
                 nameof(value))

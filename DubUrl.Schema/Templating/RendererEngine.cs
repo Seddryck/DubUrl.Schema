@@ -37,9 +37,19 @@ public abstract class RendererEngine
     protected static Dictionary<string, Func<object?, string>> CreateHelpers(IDialect dialect)
     {
         var helpers = CreateHelpers(dialect.Renderer);
+        helpers["identity"] = value => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, (string)value!);
         helpers.Add("objectname", value => DatabaseObjectNameFormatter.Render(value, dialect));
+        helpers.Add("indextable", value => value is DatabaseObjectName table
+            ? dialect.SchemaSqlRenderer.RenderIndexTableName(dialect, SqlName(table))
+            : throw new ArgumentException("Index table naming requires an object identity."));
+        helpers.Add("fktarget", value => value is ForeignKeyConstraintViewModel key && key.SourceTable is not null
+            ? dialect.SchemaSqlRenderer.RenderForeignKeyTarget(dialect, SqlName(key.SourceTable), SqlName(key.TargetTable))
+            : throw new ArgumentException("Foreign-key naming requires an owning table identity."));
         return helpers;
     }
+
+    private static SchemaSqlObjectName SqlName(DatabaseObjectName name)
+        => new(name.Name, name.Schema, name.Database, name.Catalog);
 
     protected void AddMappings(string mapKey, IDictionary<string, object> mappings)
         => Engine.AddMappings(mapKey, mappings);

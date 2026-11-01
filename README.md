@@ -12,7 +12,9 @@ dotnet test DubUrl.Schema.Testing -c Release -f net10.0 --no-build
 dotnet test DubUrl.Schema.Documents.Testing -c Release -f net10.0 --no-build
 ```
 
-CI selects the latest stable DubUrl release from NuGet once per run and uses that version for core and provider packages throughout build, QA, packaging and consumer checks. It fails early if any required provider is missing that release. Local builds default to DubUrl 0.55.1, the extraction baseline; override `-p:DubUrlVersion=<candidate>` to select another release. No checkout of DubUrl is required. See [real-database QA](QA/README.md) and [release and documentation delivery](build/README.md).
+CI selects the latest stable DubUrl release from NuGet once per run and uses that version for core and provider packages throughout build, QA, packaging and consumer checks. It fails early if any required provider is missing that release. Local builds on this branch use the locally built `0.55.2-namespace.3` Core/provider candidate for the coordinated SQLite namespace fix. These packages are not published: replace the pin with the released version before merging. Override `-p:DubUrlVersion=<candidate>` to check a matching core/provider release. See [real-database QA](QA/README.md) and [release and documentation delivery](build/README.md).
+
+Discovery identities preserve provider-native qualifiers: SQLite `main` and attached aliases belong to `MetadataName.Database` and `DatabaseObjectName.Database`; they are not schemas. Use `DiscoveryOptions.Databases` to select aliases, `Schemas` for actual schemas, and `Catalogs` for catalogs. These filters also apply to views and their inventory; table filters can match any combination of literal qualifier components. Referenced-table closure preserves each target's complete identity. Rendered attached names require the same aliases to exist in the destination connection.
 
 ## Git hooks
 

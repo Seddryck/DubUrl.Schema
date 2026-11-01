@@ -28,6 +28,8 @@ public class CreateIndexRenderer : RendererEngine
     protected CreateIndexRenderer(IDictionary<string, Func<object?, string>> helpers)
         : base(typeof(CreateIndexRenderer).Assembly, $"{typeof(CreateIndexRenderer).Namespace}.Templates.CreateIndexes.sql.hbs")
     {
+        if (!helpers.ContainsKey("indextable"))
+            AddFormatter("indextable", helpers["objectname"]);
         if (!helpers.ContainsKey("indexname"))
         {
             AddFormatter("indexname", value => value is IndexViewModel index

@@ -61,27 +61,27 @@ public static class QaSql
         return rows;
     }
 
-    public static IReadOnlyList<ColumnFact> ReaderColumns(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string schema, string table)
+    public static IReadOnlyList<ColumnFact> ReaderColumns(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string? schema, string table, string? database = null)
     {
         var result = reader.ReadAsync(connection, new DubUrl.Discovery.DiscoveryOptions
         { Features = [DubUrl.Discovery.SchemaFeature.Columns] }).GetAwaiter().GetResult();
-        return result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema).Columns
+        return result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema && (database is null || t.Identity.Database == database)).Columns
             .Select(c => new ColumnFact(c.Name, c.NativeType ?? c.Type.ToString()!, c.Length, c.Precision, c.Scale, c.Nullable ?? true)).ToArray();
     }
 
-    public static CommentFact ReaderComments(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string schema, string table)
+    public static CommentFact ReaderComments(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string? schema, string table, string? database = null)
     {
         var result = reader.ReadAsync(connection, new DubUrl.Discovery.DiscoveryOptions
         { Features = [DubUrl.Discovery.SchemaFeature.Columns, DubUrl.Discovery.SchemaFeature.Comments] }).GetAwaiter().GetResult();
-        var actual = result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema);
+        var actual = result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema && (database is null || t.Identity.Database == database));
         return new(actual.Comment, actual.Columns.ToDictionary(c => c.Name, c => c.Comment));
     }
 
-    public static IReadOnlyList<IndexFact> ReaderIndexes(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string schema, string table)
+    public static IReadOnlyList<IndexFact> ReaderIndexes(DbConnection connection, DubUrl.Discovery.ISchemaMetadataReader reader, string? schema, string table, string? database = null)
     {
         var result = reader.ReadAsync(connection, new DubUrl.Discovery.DiscoveryOptions
         { Features = [DubUrl.Discovery.SchemaFeature.Indexes] }).GetAwaiter().GetResult();
-        return result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema).Indexes
+        return result.Tables.Single(t => t.Identity.Name == table && t.Identity.Schema == schema && (database is null || t.Identity.Database == database)).Indexes
             .SelectMany(i => i.Columns.Select((c, n) => new IndexFact(i.Identity.Name, c.Name, n, i.Unique, c.Descending ?? false))).ToArray();
     }
 

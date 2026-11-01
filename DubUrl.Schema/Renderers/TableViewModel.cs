@@ -50,7 +50,7 @@ public class TableViewModel
         RegexChecks = [.. table.Constraints.OfType<RegexCheckConstraint>()];
         Checks = [.. table.Constraints.OfType<CheckConstraint>()];
         ForeignKeys = table.Constraints.OfType<ForeignKeyConstraint>()
-            .Select(constraint => new ForeignKeyConstraintViewModel(constraint))
+            .Select(constraint => new ForeignKeyConstraintViewModel(constraint, table.Identity))
             .ToArray();
         RenderForeignKeysInline = renderForeignKeysInline;
         Description = table.Description;
