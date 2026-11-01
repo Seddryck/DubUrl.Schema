@@ -21,15 +21,21 @@ internal sealed class SchemaDocumentValueConverter
         }
 
         if (literal.Type == "null")
-        {
-            if (literal.Value is not null)
-            {
-                error = "A null literal cannot contain a value.";
-                return false;
-            }
-            return true;
-        }
+            return TryConvertNull(literal, out error);
 
+        return TryConvertTypedValue(literal, out value, out error);
+    }
+
+    private static bool TryConvertNull(LiteralDocument literal, out string? error)
+    {
+        error = literal.Value is null ? null : "A null literal cannot contain a value.";
+        return error is null;
+    }
+
+    private bool TryConvertTypedValue(LiteralDocument literal, out object? value, out string? error)
+    {
+        value = null;
+        error = null;
         if (!SchemaDocumentTypes.TryGetDbType(literal.Type, out var type))
         {
             error = $"Literal type '{literal.Type}' is not supported.";

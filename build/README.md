@@ -4,6 +4,8 @@ The Schema and Documents libraries are portable multi-target NuGet packages (`ne
 
 ## Automatic versions and releases
 
+Install the build validator dependencies before running Python validation scripts locally: `python -m pip install -r build/requirements.txt`. XML reports and NuGet metadata are parsed with `defusedxml` to reject entity expansion. CI installs the same pinned dependency in each job that runs these validators.
+
 `GitVersion.yml` uses the same GitHubFlow/v1 workflow, Conventional Commit expressions, feature branch labels and continuous-deployment main branch as DubUrl; Expressif follows the same commit-based approach. `next-version: v0.100.0` (the prefix matches the inherited `tag-prefix: v`) bootstraps the first main release. It is a lower bound, not a version file to edit for every release. Subsequent versions are calculated from commits and `v` tags.
 
 - `fix:`, `chore:`, `refactor:`, `perf:`, `build:`, `ci:` and the other configured patch types increase the patch.

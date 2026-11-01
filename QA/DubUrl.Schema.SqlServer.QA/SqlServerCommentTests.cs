@@ -35,8 +35,8 @@ public sealed class SqlServerCommentTests
         }
         var identity = new DatabaseObjectName(tableName, schemaName);
         var qualified = dialect.SchemaSqlRenderer.RenderObjectName(dialect, null, null, schemaName, tableName);
-        const string tableDescription = "Customer's record\r\n雪";
-        const string columnDescription = "Owner's display name\r\nPréféré";
+        var tableDescription = $"Customer's record{Environment.NewLine}雪";
+        var columnDescription = $"Owner's display name{Environment.NewLine}Préféré";
         var table = new Table(identity,
             [new Column("Name's.列", DbType.Int32, description: columnDescription),
              new Column("Empty", DbType.Int32, description: " ")], description: tableDescription);

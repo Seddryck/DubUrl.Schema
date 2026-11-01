@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 root = Path(sys.argv[1])
 for framework in ("net8.0", "net9.0", "net10.0"):

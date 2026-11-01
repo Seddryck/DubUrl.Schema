@@ -97,7 +97,6 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             var column = context.Column;
-            var hasType = SchemaDocumentTypes.TryGetDbType(column.Type, out var type);
             if (column.Precision is 0)
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
@@ -116,6 +115,13 @@ public sealed partial class SchemaDocumentValidator
                     "Column scale cannot exceed its precision.", $"{context.Path}.scale"));
             }
 
+            ValidateTypeCompatibility(context, diagnostics);
+        }
+
+        private static void ValidateTypeCompatibility(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            var column = context.Column;
+            var hasType = SchemaDocumentTypes.TryGetDbType(column.Type, out var type);
             if ((column.Precision is not null || column.Scale is not null)
                 && hasType && !SchemaDocumentTypes.SupportsPrecision(type))
             {
@@ -383,32 +389,35 @@ public sealed partial class SchemaDocumentValidator
             var tableColumns = context.Table is null ? null : ToColumnLookup(context.Table.Columns ?? []);
             var names = new HashSet<string>(StringComparer.Ordinal);
             for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
+                ValidateColumn(columns[columnIndex], $"{context.Path}.columns[{columnIndex}]", tableColumns, names, diagnostics);
+        }
+
+        private static void ValidateColumn(IndexColumnDocument? column, string columnPath,
+            IReadOnlyDictionary<string, ColumnDocument>? tableColumns, ISet<string> names,
+            ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            if (column is null || string.IsNullOrWhiteSpace(column.Name))
             {
-                var column = columns[columnIndex];
-                var columnPath = $"{context.Path}.columns[{columnIndex}]";
-                if (column is null || string.IsNullOrWhiteSpace(column.Name))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
-                        "An index column name is required.", $"{columnPath}.name"));
-                    continue;
-                }
-                if (!names.Add(column.Name))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
-                        $"Index column '{column.Name}' is referenced more than once.", $"{columnPath}.name"));
-                }
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                    "An index column name is required.", $"{columnPath}.name"));
+                return;
+            }
+            if (!names.Add(column.Name))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
+                    $"Index column '{column.Name}' is referenced more than once.", $"{columnPath}.name"));
+            }
 
-                if (tableColumns is not null && !tableColumns.ContainsKey(column.Name))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
-                        $"Index references missing column '{column.Name}'.", $"{columnPath}.name"));
-                }
+            if (tableColumns is not null && !tableColumns.ContainsKey(column.Name))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
+                    $"Index references missing column '{column.Name}'.", $"{columnPath}.name"));
+            }
 
-                if (column.Direction is not null && column.Direction is not ("ascending" or "descending"))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidIndex,
-                        "Index column direction must be 'ascending' or 'descending'.", $"{columnPath}.direction"));
-                }
+            if (column.Direction is not null && column.Direction is not ("ascending" or "descending"))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidIndex,
+                    "Index column direction must be 'ascending' or 'descending'.", $"{columnPath}.direction"));
             }
         }
     }
@@ -489,34 +498,36 @@ public sealed partial class SchemaDocumentValidator
 
             var aliases = new HashSet<string>(StringComparer.Ordinal);
             for (var projectionIndex = 0; projectionIndex < projections.Count; projectionIndex++)
-            {
-                var projection = projections[projectionIndex];
-                var projectionPath = $"{context.Path}.query.projections[{projectionIndex}]";
-                if (projection is null)
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
-                        "A view projection cannot be null.", projectionPath));
-                    continue;
-                }
-                if (projection.Alias is not null && string.IsNullOrWhiteSpace(projection.Alias))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidView,
-                        "A projection alias cannot be empty or whitespace.", $"{projectionPath}.alias"));
-                }
-                else if (projection.Alias is not null && !aliases.Add(projection.Alias))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
-                        $"Projection alias '{projection.Alias}' is declared more than once.",
-                        $"{projectionPath}.alias"));
-                }
+                ValidateProjection(projections[projectionIndex], $"{context.Path}.query.projections[{projectionIndex}]", context, aliases, diagnostics);
+        }
 
-                var validationColumns = context.HasResolvedSource
-                    ? context.SourceColumns
-                    : ExpressionReferences(projection.Expression)
-                        .Select(name => new ColumnDocument { Name = name }).ToArray();
-                ValidateExpression(projection.Expression, $"{projectionPath}.expression", validationColumns,
-                    diagnostics, context.ValueConverter);
+        private static void ValidateProjection(ViewProjectionDocument? projection, string projectionPath,
+            ViewValidationContext context, ISet<string> aliases, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            if (projection is null)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                    "A view projection cannot be null.", projectionPath));
+                return;
             }
+            if (projection.Alias is not null && string.IsNullOrWhiteSpace(projection.Alias))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidView,
+                    "A projection alias cannot be empty or whitespace.", $"{projectionPath}.alias"));
+            }
+            else if (projection.Alias is not null && !aliases.Add(projection.Alias))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
+                    $"Projection alias '{projection.Alias}' is declared more than once.",
+                    $"{projectionPath}.alias"));
+            }
+
+            var validationColumns = context.HasResolvedSource
+                ? context.SourceColumns
+                : ExpressionReferences(projection.Expression)
+                    .Select(name => new ColumnDocument { Name = name }).ToArray();
+            ValidateExpression(projection.Expression, $"{projectionPath}.expression", validationColumns,
+                diagnostics, context.ValueConverter);
         }
     }
 
@@ -575,6 +586,18 @@ public sealed partial class SchemaDocumentValidator
             ValidateExpression(check.Expression, $"{context.Path}.expression", context.Columns, diagnostics,
                 context.ValueConverter);
             ValidatePredicateExpression(check.Expression, $"{context.Path}.expression", diagnostics);
+            ValidateValues(context, diagnostics);
+            if (check.NullBehavior is not null
+                && check.NullBehavior is not ("sql-three-valued-logic" or "match-null"))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
+                    "Membership null behavior must be 'sql-three-valued-logic' or 'match-null'.",
+                    $"{context.Path}.nullBehavior"));
+            }
+        }
+        private static void ValidateValues(CheckValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            var check = context.Check;
             if (check.Values is null || check.Values.Count == 0)
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
@@ -602,13 +625,6 @@ public sealed partial class SchemaDocumentValidator
                         "Membership checks containing null require nullBehavior 'match-null'.",
                         $"{context.Path}.nullBehavior"));
                 }
-            }
-            if (check.NullBehavior is not null
-                && check.NullBehavior is not ("sql-three-valued-logic" or "match-null"))
-            {
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
-                    "Membership null behavior must be 'sql-three-valued-logic' or 'match-null'.",
-                    $"{context.Path}.nullBehavior"));
             }
         }
     }

@@ -1,6 +1,6 @@
 import argparse
 from pathlib import Path
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 import zipfile
 
 def validate(directory, version):
@@ -24,5 +24,8 @@ def validate(directory, version):
     print("Validated two multi-target packages and symbol packages")
 
 if __name__ == "__main__":
-    parser=argparse.ArgumentParser();parser.add_argument("directory");parser.add_argument("version")
-    args=parser.parse_args();validate(args.directory,args.version)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("directory")
+    parser.add_argument("version")
+    args = parser.parse_args()
+    validate(args.directory, args.version)

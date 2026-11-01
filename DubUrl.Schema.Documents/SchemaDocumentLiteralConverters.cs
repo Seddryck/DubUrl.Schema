@@ -115,6 +115,9 @@ internal sealed class DefaultLiteralValueConverter(
 internal static class DefaultLiteralValueConverters
 {
     public static IEnumerable<ILiteralValueConverter> Create()
+        => CreateBasicConverters().Concat(CreateNumericAndStringConverters()).Concat(CreateRemainingConverters());
+
+    private static IEnumerable<ILiteralValueConverter> CreateBasicConverters()
     {
         yield return Create("literal.ansi-string", DbType.AnsiString, value => value);
         yield return Create("literal.ansi-string-fixed-length", DbType.AnsiStringFixedLength, value => value);
@@ -130,6 +133,10 @@ internal static class DefaultLiteralValueConverters
             value => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
         yield return Create("literal.datetime2", DbType.DateTime2,
             value => DateTime.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
+    }
+
+    private static IEnumerable<ILiteralValueConverter> CreateNumericAndStringConverters()
+    {
         yield return Create("literal.datetime-offset", DbType.DateTimeOffset,
             value => DateTimeOffset.Parse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
         yield return Create("literal.decimal", DbType.Decimal,
@@ -146,6 +153,10 @@ internal static class DefaultLiteralValueConverters
         yield return Create("literal.object", DbType.Object, value => value);
         yield return Create("literal.sbyte", DbType.SByte,
             value => sbyte.Parse(value, NumberStyles.Integer, CultureInfo.InvariantCulture));
+    }
+
+    private static IEnumerable<ILiteralValueConverter> CreateRemainingConverters()
+    {
         yield return Create("literal.single", DbType.Single,
             value => float.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture));
         yield return Create("literal.string", DbType.String, value => value);

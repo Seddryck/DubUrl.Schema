@@ -88,120 +88,7 @@ public abstract class ProviderContract : SchemaContract
             }
             if (scenario.StartsWith("Discovery") || scenario.EndsWith("Diagnostic") || scenario == "DiagnosticDetails")
             { await Discovery(scenario); return; }
-            switch (scenario)
-            {
-                case "ReplaceTable":
-                    {
-                        var schema = Simple();
-                        if (!Deploy(schema, setup: true)) break;
-                        Execute($"INSERT INTO {Q(schema.Tables.Values.Single().Identity)} VALUES (1,'old')");
-                        if (!Deploy(schema, SchemaCreationOptions.DropIfExists)) break;
-                        Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT(*) FROM {Q(schema.Tables.Values.Single().Identity)}")), Is.Zero); break;
-                    }
-                case "QuotedIdentifiers":
-                    {
-                        var name = new DatabaseObjectName(Name("select.'雪"));
-                        if (Deploy(new([new Table(name, [Id("comment_column")])])))
-                            Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT({Q("comment_column")}) FROM {Q(name)}")), Is.Zero);
-                        break;
-                    }
-                case "TableComments":
-                case "ColumnComments":
-                case "EmptyComments":
-                case "CommentsSameBatch":
-                case "QualifiedComments":
-                case "UnqualifiedComments": Comments(scenario); break;
-                case "ColumnTypes":
-                    {
-                        var table = new Table(Name("types"), [Id(), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)]);
-                        if (!Deploy(new([table]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} VALUES (12,'text',12.25)");
-                        var row = QaSql.Rows(database, $"SELECT {Q("id")},{Q("title")},{Q("amount")} FROM {Q(table.Identity)}").Single();
-                        Assert.That(Convert.ToInt32(row[0]), Is.EqualTo(12)); Assert.That(row[1], Is.EqualTo("text"));
-                        Assert.That(Convert.ToDecimal(row[2]), Is.EqualTo(12.25m)); break;
-                    }
-                case "ColumnFacets":
-                    {
-                        var table = new Table(Name("facets"), [Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)]);
-                        if (!Deploy(new([table]))) break;
-                        var columns = ReadColumns(database, table.Identity);
-                        Assert.That(columns.Select(c => c.Name), Is.EqualTo(new[] { "title", "amount" }));
-                        var amount = columns.Single(c => c.Name == "amount");
-                        Assert.That(amount.Precision, Is.EqualTo(10)); Assert.That(amount.Scale, Is.EqualTo(2));
-                        if (expectation.Outcome == ExpectedOutcome.NotEnforced)
-                        {
-                            Execute($"INSERT INTO {Q(table.Identity)} VALUES ({QaSql.Literal(new string('x', 41))},1)");
-                            Assert.That(expectation.Evidence, Does.Contain("length"));
-                        }
-                        else
-                        {
-                            Assert.That(columns.Single(c => c.Name == "title").Length, Is.EqualTo(40));
-                        }
-
-                        break;
-                    }
-                case "Nullability":
-                    {
-                        var table = new Table(Name("nullable"), [new Column("required", DbType.Int32, constraints: [new NotNullableConstraint()]), new Column("optional", DbType.Int32, constraints: [new NullableConstraint()])]);
-                        if (!Deploy(new([table]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} VALUES (1,NULL)");
-                        Assert.That(QaSql.Rows(database, $"SELECT {Q("optional")} FROM {Q(table.Identity)}").Single()[0], Is.Null);
-                        Assert.That(() => Execute($"INSERT INTO {Q(table.Identity)} VALUES (NULL,2)"), Throws.InstanceOf<DbException>()); break;
-                    }
-                case "LiteralDefaults":
-                    {
-                        var table = new Table(Name("defaults"), [Id(), new NumericColumn("amount", DbType.Decimal, 10, 2, defaultValue: 12.25m), new VarLengthColumn("title", DbType.AnsiString, 40, defaultValue: "Owner's record")]);
-                        if (!Deploy(new([table]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} ({Q("id")}) VALUES (1)");
-                        var row = QaSql.Rows(database, $"SELECT {Q("amount")},{Q("title")} FROM {Q(table.Identity)}").Single();
-                        Assert.That(Convert.ToDecimal(row[0]), Is.EqualTo(12.25m)); Assert.That(row[1], Is.EqualTo("Owner's record")); break;
-                    }
-                case "IdentityDefault":
-                case "IdentitySeedIncrement":
-                    {
-                        var seeded = scenario == "IdentitySeedIncrement";
-                        var table = new Table(Name("identity"), [new Column("id", DbType.Int32, constraints: [new PrimaryKeyConstraint()], generation: new IdentityColumnGeneration(seeded ? 10 : 1, seeded ? 2 : 1)), Id("payload")]);
-                        if (!Deploy(new([table]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} ({Q("payload")}) VALUES (1)");
-                        Execute($"INSERT INTO {Q(table.Identity)} ({Q("payload")}) VALUES (2)");
-                        var ids = QaSql.Rows(database, $"SELECT {Q("id")} FROM {Q(table.Identity)} ORDER BY {Q("id")}").Select(r => Convert.ToInt64(r[0])).ToArray();
-                        Assert.That(ids, Is.EqualTo(seeded ? new long[] { 10, 12 } : new long[] { 1, 2 })); break;
-                    }
-                case "GeneratedStored":
-                case "GeneratedVirtual":
-                    {
-                        var table = new Table(Name("generation"), [Id(), new Column("copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ColumnIdentityExpression("id"), scenario == "GeneratedStored" ? GeneratedColumnStorage.Stored : GeneratedColumnStorage.Virtual))]);
-                        if (!Deploy(new([table]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} ({Q("id")}) VALUES (7)");
-                        Assert.That(Convert.ToInt32(Scalar($"SELECT {Q("copy")} FROM {Q(table.Identity)}")), Is.EqualTo(7)); break;
-                    }
-                case "SinglePrimaryKey":
-                case "CompositePrimaryKey":
-                case "SingleUnique":
-                case "CompositeUnique":
-                case "NativeVarcharKey":
-                case "NativeCharKey": Keys(scenario); break;
-                case "ForeignKey": case "CompositeForeignKey": case "DependencyCreate": case "DependencyDrop": Relationships(scenario); break;
-                case "ComparisonCheck": case "MembershipCheck": case "RegexCheck": Checks(scenario); break;
-                case "SingleIndex": case "CompositeIndex": case "UniqueIndex": case "IndexDirection": Indexes(scenario); break;
-                case "ProjectionView":
-                    {
-                        var table = new Table(Name("source"), [Id(), Text()]);
-                        var view = new View(Name("view"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("id"), "key"), new ViewProjection(new ColumnIdentityExpression("title"), "label")));
-                        if (!Deploy(new([table], [], [view]))) break;
-                        Execute($"INSERT INTO {Q(table.Identity)} VALUES (1,'hello')");
-                        var row = QaSql.Rows(database, $"SELECT {Q("key")},{Q("label")} FROM {Q(view.Identity)}").Single();
-                        Assert.That(Convert.ToInt32(row[0]), Is.EqualTo(1)); Assert.That(row[1], Is.EqualTo("hello")); break;
-                    }
-                case "PublicDeployment": case "FluentDeployment": PublicDeployment(scenario); break;
-                case "CleanupAfterFailure":
-                    {
-                        var schema = Simple(); if (!Deploy(schema)) break;
-                        Assert.Throws<InvalidOperationException>(() => { try { throw new InvalidOperationException("Deliberate fixture failure"); } finally { Cleanup(); } });
-                        Assert.That(ObjectExists(database, schema.Tables.Values.Single().Identity, false), Is.False); break;
-                    }
-                default: Assert.Fail("No shared test implemented: " + scenario); break;
-            }
+            RunDeploymentScenario(scenario);
         }
         finally
         {
@@ -209,6 +96,164 @@ public abstract class ProviderContract : SchemaContract
             foreach (var table in tables) Assert.That(ObjectExists(database, table.Identity, false), Is.False, "Leaked table " + table.Name);
             foreach (var view in views) Assert.That(ObjectExists(database, view, true), Is.False, "Leaked view " + view.Name);
         }
+    }
+
+    private void RunDeploymentScenario(string scenario)
+    {
+        Action comments = () => Comments(scenario);
+        Action identity = () => Identity(scenario);
+        Action generated = () => Generated(scenario);
+        Action keys = () => Keys(scenario);
+        Action relationships = () => Relationships(scenario);
+        Action checks = () => Checks(scenario);
+        Action indexes = () => Indexes(scenario);
+        Action publicDeployment = () => PublicDeployment(scenario);
+        var scenarios = new Dictionary<string, Action>(StringComparer.Ordinal)
+        {
+            ["ReplaceTable"] = ReplaceTable,
+            ["QuotedIdentifiers"] = QuotedIdentifiers,
+            ["ColumnTypes"] = ColumnTypes,
+            ["ColumnFacets"] = ColumnFacets,
+            ["Nullability"] = Nullability,
+            ["LiteralDefaults"] = LiteralDefaults,
+            ["ProjectionView"] = ProjectionView,
+            ["CleanupAfterFailure"] = CleanupAfterFailure,
+            ["TableComments"] = comments,
+            ["ColumnComments"] = comments,
+            ["EmptyComments"] = comments,
+            ["CommentsSameBatch"] = comments,
+            ["QualifiedComments"] = comments,
+            ["UnqualifiedComments"] = comments,
+            ["IdentityDefault"] = identity,
+            ["IdentitySeedIncrement"] = identity,
+            ["GeneratedStored"] = generated,
+            ["GeneratedVirtual"] = generated,
+            ["SinglePrimaryKey"] = keys,
+            ["CompositePrimaryKey"] = keys,
+            ["SingleUnique"] = keys,
+            ["CompositeUnique"] = keys,
+            ["NativeVarcharKey"] = keys,
+            ["NativeCharKey"] = keys,
+            ["ForeignKey"] = relationships,
+            ["CompositeForeignKey"] = relationships,
+            ["DependencyCreate"] = relationships,
+            ["DependencyDrop"] = relationships,
+            ["ComparisonCheck"] = checks,
+            ["MembershipCheck"] = checks,
+            ["RegexCheck"] = checks,
+            ["SingleIndex"] = indexes,
+            ["CompositeIndex"] = indexes,
+            ["UniqueIndex"] = indexes,
+            ["IndexDirection"] = indexes,
+            ["PublicDeployment"] = publicDeployment,
+            ["FluentDeployment"] = publicDeployment,
+        };
+        if (scenarios.TryGetValue(scenario, out var run))
+            run();
+        else
+            Assert.Fail("No shared test implemented: " + scenario);
+    }
+
+    private void ReplaceTable()
+    {
+        var schema = Simple();
+        if (!Deploy(schema, setup: true)) return;
+        Execute($"INSERT INTO {Q(schema.Tables.Values.Single().Identity)} VALUES (1,'old')");
+        if (!Deploy(schema, SchemaCreationOptions.DropIfExists)) return;
+        Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT(*) FROM {Q(schema.Tables.Values.Single().Identity)}")), Is.Zero); return;
+    }
+
+    private void QuotedIdentifiers()
+    {
+        var name = new DatabaseObjectName(Name("select.'雪"));
+        if (Deploy(new([new Table(name, [Id("comment_column")])])))
+            Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT({Q("comment_column")}) FROM {Q(name)}")), Is.Zero);
+        return;
+    }
+
+    private void ColumnTypes()
+    {
+        var table = new Table(Name("types"), [Id(), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)]);
+        if (!Deploy(new([table]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} VALUES (12,'text',12.25)");
+        var row = QaSql.Rows(database, $"SELECT {Q("id")},{Q("title")},{Q("amount")} FROM {Q(table.Identity)}").Single();
+        Assert.That(Convert.ToInt32(row[0]), Is.EqualTo(12)); Assert.That(row[1], Is.EqualTo("text"));
+        Assert.That(Convert.ToDecimal(row[2]), Is.EqualTo(12.25m)); return;
+    }
+
+    private void ColumnFacets()
+    {
+        var table = new Table(Name("facets"), [Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)]);
+        if (!Deploy(new([table]))) return;
+        var columns = ReadColumns(database, table.Identity);
+        Assert.That(columns.Select(c => c.Name), Is.EqualTo(new[] { "title", "amount" }));
+        var amount = columns.Single(c => c.Name == "amount");
+        Assert.That(amount.Precision, Is.EqualTo(10)); Assert.That(amount.Scale, Is.EqualTo(2));
+        if (expectation.Outcome == ExpectedOutcome.NotEnforced)
+        {
+            Execute($"INSERT INTO {Q(table.Identity)} VALUES ({QaSql.Literal(new string('x', 41))},1)");
+            Assert.That(expectation.Evidence, Does.Contain("length"));
+        }
+        else
+        {
+            Assert.That(columns.Single(c => c.Name == "title").Length, Is.EqualTo(40));
+        }
+
+        return;
+    }
+
+    private void Nullability()
+    {
+        var table = new Table(Name("nullable"), [new Column("required", DbType.Int32, constraints: [new NotNullableConstraint()]), new Column("optional", DbType.Int32, constraints: [new NullableConstraint()])]);
+        if (!Deploy(new([table]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} VALUES (1,NULL)");
+        Assert.That(QaSql.Rows(database, $"SELECT {Q("optional")} FROM {Q(table.Identity)}").Single()[0], Is.Null);
+        Assert.That(() => Execute($"INSERT INTO {Q(table.Identity)} VALUES (NULL,2)"), Throws.InstanceOf<DbException>()); return;
+    }
+
+    private void LiteralDefaults()
+    {
+        var table = new Table(Name("defaults"), [Id(), new NumericColumn("amount", DbType.Decimal, 10, 2, defaultValue: 12.25m), new VarLengthColumn("title", DbType.AnsiString, 40, defaultValue: "Owner's record")]);
+        if (!Deploy(new([table]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} ({Q("id")}) VALUES (1)");
+        var row = QaSql.Rows(database, $"SELECT {Q("amount")},{Q("title")} FROM {Q(table.Identity)}").Single();
+        Assert.That(Convert.ToDecimal(row[0]), Is.EqualTo(12.25m)); Assert.That(row[1], Is.EqualTo("Owner's record")); return;
+    }
+
+    private void Identity(string scenario)
+    {
+        var seeded = scenario == "IdentitySeedIncrement";
+        var table = new Table(Name("identity"), [new Column("id", DbType.Int32, constraints: [new PrimaryKeyConstraint()], generation: new IdentityColumnGeneration(seeded ? 10 : 1, seeded ? 2 : 1)), Id("payload")]);
+        if (!Deploy(new([table]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} ({Q("payload")}) VALUES (1)");
+        Execute($"INSERT INTO {Q(table.Identity)} ({Q("payload")}) VALUES (2)");
+        var ids = QaSql.Rows(database, $"SELECT {Q("id")} FROM {Q(table.Identity)} ORDER BY {Q("id")}").Select(r => Convert.ToInt64(r[0])).ToArray();
+        Assert.That(ids, Is.EqualTo(seeded ? new long[] { 10, 12 } : new long[] { 1, 2 })); return;
+    }
+
+    private void Generated(string scenario)
+    {
+        var table = new Table(Name("generation"), [Id(), new Column("copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ColumnIdentityExpression("id"), scenario == "GeneratedStored" ? GeneratedColumnStorage.Stored : GeneratedColumnStorage.Virtual))]);
+        if (!Deploy(new([table]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} ({Q("id")}) VALUES (7)");
+        Assert.That(Convert.ToInt32(Scalar($"SELECT {Q("copy")} FROM {Q(table.Identity)}")), Is.EqualTo(7)); return;
+    }
+
+    private void ProjectionView()
+    {
+        var table = new Table(Name("source"), [Id(), Text()]);
+        var view = new View(Name("view"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("id"), "key"), new ViewProjection(new ColumnIdentityExpression("title"), "label")));
+        if (!Deploy(new([table], [], [view]))) return;
+        Execute($"INSERT INTO {Q(table.Identity)} VALUES (1,'hello')");
+        var row = QaSql.Rows(database, $"SELECT {Q("key")},{Q("label")} FROM {Q(view.Identity)}").Single();
+        Assert.That(Convert.ToInt32(row[0]), Is.EqualTo(1)); Assert.That(row[1], Is.EqualTo("hello")); return;
+    }
+
+    private void CleanupAfterFailure()
+    {
+        var schema = Simple(); if (!Deploy(schema)) return;
+        Assert.Throws<InvalidOperationException>(() => { try { throw new InvalidOperationException("Deliberate fixture failure"); } finally { Cleanup(); } });
+        Assert.That(ObjectExists(database, schema.Tables.Values.Single().Identity, false), Is.False); return;
     }
 
     private bool Deploy(Schema schema, SchemaCreationOptions options = SchemaCreationOptions.None, bool setup = false)
@@ -384,19 +429,75 @@ public abstract class ProviderContract : SchemaContract
         var basic = new[] { SchemaFeature.Tables, SchemaFeature.Columns };
         if (scenario is "DiscoveryForeignKey" or "DiscoveryClosure" or "MissingReferenceDiagnostic")
         {
-            var schema = RelationshipSchema(); if (!Deploy(schema)) return;
-            var child = schema.Tables.Values.Single(t => t.Name == Name("child"));
-            var result = await Inspect([.. basic, SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys], scenario == "DiscoveryForeignKey" ? schema.Tables.Values.ToArray() : [child], closure: scenario == "DiscoveryClosure");
-            if (scenario == "MissingReferenceDiagnostic")
-            {
-                Assert.That(result.Diagnostics.Where(d => d.Code == "SDI005").Select(d => d.Feature), Is.EqualTo(new[] { SchemaFeature.ForeignKeys }));
-                Assert.That(result.IsComplete, Is.False); return;
-            }
-            Assert.That(result.IsComplete, Is.True, string.Join(",", result.Diagnostics.Select(d => d.Code)));
-            Assert.That(result.Schema!.Tables.Count, Is.EqualTo(2));
-            var key = result.Schema.Tables.Values.Single(t => t.Name == child.Name).Constraints.OfType<ForeignKey>().Single();
-            Assert.That(key.SourceColumns, Is.EqualTo(new[] { "x", "y" })); Assert.That(key.TargetColumns, Is.EqualTo(new[] { "b", "a" })); return;
+            await DiscoverRelationships(scenario, basic);
+            return;
         }
+        await DiscoverTable(scenario, basic);
+    }
+
+    private async Task DiscoverTable(string scenario, SchemaFeature[] basic)
+    {
+        var table = CreateDiscoveryTable(scenario);
+        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], true) } : [];
+        var portable = new View(Name("portable"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("b"), "label")));
+        if (!DeployDiscoveryTable(scenario, table, indexes, portable)) return;
+        if (scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic")
+        {
+            await DiscoverUnsupportedIndex(scenario, table, basic);
+            return;
+        }
+        if (scenario is "DiscoveryPartial" or "DiscoveryStrict" or "AggregateViewDiagnostic" or "DiagnosticDetails")
+        {
+            await DiscoverUnsupportedView(scenario, table, basic);
+            return;
+        }
+        await DiscoverPortableTable(scenario, table, indexes, portable, basic);
+    }
+
+    private bool DeployDiscoveryTable(string scenario, Table table, Index[] indexes, View portable)
+        => Deploy(new([table], indexes, scenario is "DiscoveryViews" or "AggregateViewDiagnostic" ? [portable] : []),
+            setup: scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic" or "DiscoveryRoundTrip");
+
+    private async Task DiscoverPortableTable(string scenario, Table table, Index[] indexes, View portable, SchemaFeature[] basic)
+    {
+        var feature = DiscoveryFeature(scenario);
+        if (scenario == "DiscoveryTableFilter") Deploy(new([new Table(Name("unrelated"), [Id()])]));
+        var inspected = await Inspect([.. basic, feature], scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table]);
+        Assert.That(inspected.IsSuccess, Is.True, string.Join(",", inspected.Diagnostics.Select(d => d.Code)));
+        if (expectation.Outcome == ExpectedOutcome.NotEnforced && scenario != "DiscoveryIndexes")
+        {
+            VerifyUnsupportedDiscovery(scenario, inspected, feature);
+            return;
+        }
+        await VerifyDiscoveredSchema(scenario, table, indexes, portable, inspected, basic);
+    }
+
+    private static void VerifyUnsupportedDiscovery(string scenario, SchemaInspectionResult inspected, SchemaFeature feature)
+    {
+        Assert.That(inspected.IsComplete, Is.False);
+        Assert.That(inspected.Diagnostics.Any(d => d.Feature == feature && d.Coverage is MetadataCoverage.Unsupported or MetadataCoverage.Unrepresentable), Is.True);
+        var diagnosticCode = scenario switch { "DiscoveryUnique" => "SDI006", "DiscoveryGeneration" => "SDI009", _ => "SDI003" };
+        Assert.That(inspected.Diagnostics.Where(d => d.Feature == feature).Select(d => d.Code), Does.Contain(diagnosticCode));
+    }
+
+    private async Task DiscoverRelationships(string scenario, SchemaFeature[] basic)
+    {
+        var schema = RelationshipSchema(); if (!Deploy(schema)) return;
+        var child = schema.Tables.Values.Single(t => t.Name == Name("child"));
+        var result = await Inspect([.. basic, SchemaFeature.PrimaryKeys, SchemaFeature.ForeignKeys], scenario == "DiscoveryForeignKey" ? schema.Tables.Values.ToArray() : [child], closure: scenario == "DiscoveryClosure");
+        if (scenario == "MissingReferenceDiagnostic")
+        {
+            Assert.That(result.Diagnostics.Where(d => d.Code == "SDI005").Select(d => d.Feature), Is.EqualTo(new[] { SchemaFeature.ForeignKeys }));
+            Assert.That(result.IsComplete, Is.False); return;
+        }
+        Assert.That(result.IsComplete, Is.True, string.Join(",", result.Diagnostics.Select(d => d.Code)));
+        Assert.That(result.Schema!.Tables.Count, Is.EqualTo(2));
+        var key = result.Schema.Tables.Values.Single(t => t.Name == child.Name).Constraints.OfType<ForeignKey>().Single();
+        Assert.That(key.SourceColumns, Is.EqualTo(new[] { "x", "y" })); Assert.That(key.TargetColumns, Is.EqualTo(new[] { "b", "a" })); return;
+    }
+
+    private Table CreateDiscoveryTable(string scenario)
+    {
         var a = Id("b"); var b = Id("a");
         var columns = new Column[] { a, b, Text(), new NumericColumn("amount", DbType.Decimal, 10, 2) }; Constraint[] constraints = [];
         if (scenario == "DiscoveryFacets") columns = [new Column("b", DbType.Int32, constraints: [new NotNullableConstraint()]), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)];
@@ -408,36 +509,39 @@ public abstract class ProviderContract : SchemaContract
         if (scenario == "DiscoveryGeneration") columns = [a, new Column("copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ColumnIdentityExpression("b"), DiscoveryGenerationStorage))];
         if (scenario == "DiscoveryComments") columns = [Id(), Text("title", "column comment")];
         var table = new Table(Name("discovery"), columns, constraints, scenario == "DiscoveryComments" ? "table comment" : null);
-        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], true) } : [];
-        var portable = new View(Name("portable"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("b"), "label")));
-        if (!Deploy(new([table], indexes, scenario is "DiscoveryViews" or "AggregateViewDiagnostic" ? [portable] : []), setup: scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic" or "DiscoveryRoundTrip")) return;
-        if (scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic")
+        return table;
+    }
+
+    private async Task DiscoverUnsupportedIndex(string scenario, Table table, SchemaFeature[] basic)
+    {
+        try
         {
-            try
-            {
-                Execute(scenario == "ExpressionIndexDiagnostic" ? ExpressionIndexSql(Q(Name("expr")), Q(table.Identity), Q("title")) : FilteredIndexSql(Q(Name("partial")), Q(table.Identity), Q("b")));
-            }
-            catch (DbException error) when (expectation.Outcome == ExpectedOutcome.DatabaseRejects)
-            { VerifyDatabaseRejection(error); return; }
-            Assert.That(expectation.Outcome, Is.Not.EqualTo(ExpectedOutcome.DatabaseRejects));
-            var result = await Inspect([.. basic, SchemaFeature.Indexes], [table]);
-            var diagnostics = result.Diagnostics.Where(d => d.Feature == SchemaFeature.Indexes).ToArray();
-            Assert.That(diagnostics.Length, Is.EqualTo(1)); Assert.That(diagnostics[0].Code, Is.EqualTo("SDI009"));
-            Assert.That(diagnostics[0].Coverage, Is.EqualTo(MetadataCoverage.Unrepresentable)); Assert.That(result.Schema!.Indexes, Is.Empty); return;
+            Execute(scenario == "ExpressionIndexDiagnostic" ? ExpressionIndexSql(Q(Name("expr")), Q(table.Identity), Q("title")) : FilteredIndexSql(Q(Name("partial")), Q(table.Identity), Q("b")));
         }
-        if (scenario is "DiscoveryPartial" or "DiscoveryStrict" or "AggregateViewDiagnostic" or "DiagnosticDetails")
-        {
-            var aggregate = new DatabaseObjectName(Name("aggregate")); views.Add(aggregate);
-            Execute($"CREATE VIEW {Q(aggregate)} AS SELECT COUNT(*) AS {Q("total")} FROM {Q(table.Identity)}");
-            var result = await Inspect([.. basic, SchemaFeature.Views], partial: scenario != "DiscoveryStrict");
-            Assert.That(result.IsSuccess, Is.EqualTo(scenario != "DiscoveryStrict")); Assert.That(result.IsComplete, Is.False);
-            var diagnostics = result.Diagnostics.Where(d => d.Object?.Name == aggregate.Name).ToArray();
-            Assert.That(diagnostics.Length, Is.EqualTo(1)); Assert.That(diagnostics[0].Code, Is.EqualTo("SDI008"));
-            Assert.That(diagnostics[0].Feature, Is.EqualTo(SchemaFeature.Views));
-            Assert.That(diagnostics[0].Coverage, Is.EqualTo(MetadataCoverage.Unrepresentable));
-            Assert.That(result.Schema!.Views.Values.Select(v => v.Name), Does.Not.Contain(aggregate.Name)); return;
-        }
-        var feature = scenario switch
+        catch (DbException error) when (expectation.Outcome == ExpectedOutcome.DatabaseRejects)
+        { VerifyDatabaseRejection(error); return; }
+        Assert.That(expectation.Outcome, Is.Not.EqualTo(ExpectedOutcome.DatabaseRejects));
+        var result = await Inspect([.. basic, SchemaFeature.Indexes], [table]);
+        var diagnostics = result.Diagnostics.Where(d => d.Feature == SchemaFeature.Indexes).ToArray();
+        Assert.That(diagnostics.Length, Is.EqualTo(1)); Assert.That(diagnostics[0].Code, Is.EqualTo("SDI009"));
+        Assert.That(diagnostics[0].Coverage, Is.EqualTo(MetadataCoverage.Unrepresentable)); Assert.That(result.Schema!.Indexes, Is.Empty); return;
+    }
+
+    private async Task DiscoverUnsupportedView(string scenario, Table table, SchemaFeature[] basic)
+    {
+        var aggregate = new DatabaseObjectName(Name("aggregate")); views.Add(aggregate);
+        Execute($"CREATE VIEW {Q(aggregate)} AS SELECT COUNT(*) AS {Q("total")} FROM {Q(table.Identity)}");
+        var result = await Inspect([.. basic, SchemaFeature.Views], partial: scenario != "DiscoveryStrict");
+        Assert.That(result.IsSuccess, Is.EqualTo(scenario != "DiscoveryStrict")); Assert.That(result.IsComplete, Is.False);
+        var diagnostics = result.Diagnostics.Where(d => d.Object?.Name == aggregate.Name).ToArray();
+        Assert.That(diagnostics.Length, Is.EqualTo(1)); Assert.That(diagnostics[0].Code, Is.EqualTo("SDI008"));
+        Assert.That(diagnostics[0].Feature, Is.EqualTo(SchemaFeature.Views));
+        Assert.That(diagnostics[0].Coverage, Is.EqualTo(MetadataCoverage.Unrepresentable));
+        Assert.That(result.Schema!.Views.Values.Select(v => v.Name), Does.Not.Contain(aggregate.Name)); return;
+    }
+
+    private static SchemaFeature DiscoveryFeature(string scenario)
+        => scenario switch
         {
             "DiscoveryPrimaryKey" => SchemaFeature.PrimaryKeys,
             "DiscoveryUnique" => SchemaFeature.UniqueConstraints,
@@ -449,20 +553,37 @@ public abstract class ProviderContract : SchemaContract
             "DiscoveryViews" => SchemaFeature.Views,
             _ => SchemaFeature.Columns
         };
-        if (scenario == "DiscoveryTableFilter") Deploy(new([new Table(Name("unrelated"), [Id()])]));
-        var inspected = await Inspect([.. basic, feature], scenario is "DiscoveryViews" or "DiscoverySchemaFilter" ? null : [table]);
-        Assert.That(inspected.IsSuccess, Is.True, string.Join(",", inspected.Diagnostics.Select(d => d.Code)));
-        if (expectation.Outcome == ExpectedOutcome.NotEnforced && scenario != "DiscoveryIndexes")
-        {
-            Assert.That(inspected.IsComplete, Is.False);
-            Assert.That(inspected.Diagnostics.Any(d => d.Feature == feature && d.Coverage is MetadataCoverage.Unsupported or MetadataCoverage.Unrepresentable), Is.True);
-            var diagnosticCode = scenario switch { "DiscoveryUnique" => "SDI006", "DiscoveryGeneration" => "SDI009", _ => "SDI003" };
-            Assert.That(inspected.Diagnostics.Where(d => d.Feature == feature).Select(d => d.Code), Does.Contain(diagnosticCode)); return;
-        }
+
+    private async Task VerifyDiscoveredSchema(string scenario, Table table, Index[] indexes, View portable, SchemaInspectionResult inspected, SchemaFeature[] basic)
+    {
         var actual = inspected.Schema!.Tables.Values.Single(t => t.Name == table.Name);
+        if (VerifyDiscoveredColumns(scenario, actual, table)) return;
         switch (scenario)
         {
-            case "DiscoveryTablesColumns": Assert.That(actual.Columns.Keys, Is.EqualTo(columns.Select(c => c.Name))); break;
+            case "DiscoveryIndexes":
+                var ix = inspected.Schema.Indexes.Values.Single(i => i.Name == indexes[0].Name);
+                Assert.That(ix.IsUnique, Is.True); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
+                Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { IndexSortDirection.Descending, IndexSortDirection.Ascending })); break;
+            case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
+            case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;
+            case "DiscoverySchemaFilter":
+                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity.Schema == CurrentSchema(database)), Is.True);
+                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, new DiscoveryOptions { Schemas = [Name("absent")], Features = basic });
+                Assert.That(excluded.Schema!.Tables, Is.Empty); break;
+            case "DiscoveryRoundTrip":
+                Execute(DropTableSql(table.Name)); if (!Deploy(new(inspected.Schema.Tables.Values.ToArray()))) return;
+                var second = await Inspect(basic, [table]); var again = second.Schema!.Tables.Values.Single();
+                Assert.That(again.Identity, Is.EqualTo(actual.Identity));
+                Assert.That(again.Columns.Values.Select(c => (c.Name, c.Type)), Is.EqualTo(actual.Columns.Values.Select(c => (c.Name, c.Type)))); break;
+            default: Assert.Fail("No discovery assertion: " + scenario); break;
+        }
+    }
+
+    private bool VerifyDiscoveredColumns(string scenario, Table actual, Table source)
+    {
+        switch (scenario)
+        {
+            case "DiscoveryTablesColumns": Assert.That(actual.Columns.Keys, Is.EqualTo(source.Columns.Values.Select(c => c.Name))); break;
             case "DiscoveryFacets":
                 Assert.That(actual.Columns["b"].Type, Is.EqualTo(DbType.Int32));
                 Assert.That(actual.Columns["b"].Constraints.OfType<NotNullableConstraint>(), Has.Exactly(1).Items);
@@ -483,22 +604,8 @@ public abstract class ProviderContract : SchemaContract
                 Assert.That(check.Left, Is.TypeOf<ColumnIdentityExpression>()); Assert.That(check.Operator, Is.EqualTo(">=")); Assert.That(((ValueExpression)check.Right).Value, Is.EqualTo(0)); break;
             case "DiscoveryGeneration": Assert.That(actual.Columns["copy"].Generation, Is.TypeOf<GeneratedColumnGeneration>()); break;
             case "DiscoveryComments": Assert.That(actual.Description, Is.EqualTo("table comment")); Assert.That(actual.Columns["title"].Description, Is.EqualTo("column comment")); break;
-            case "DiscoveryIndexes":
-                var ix = inspected.Schema.Indexes.Values.Single(i => i.Name == indexes[0].Name);
-                Assert.That(ix.IsUnique, Is.True); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
-                Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { IndexSortDirection.Descending, IndexSortDirection.Ascending })); break;
-            case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
-            case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;
-            case "DiscoverySchemaFilter":
-                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity.Schema == CurrentSchema(database)), Is.True);
-                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, new DiscoveryOptions { Schemas = [Name("absent")], Features = basic });
-                Assert.That(excluded.Schema!.Tables, Is.Empty); break;
-            case "DiscoveryRoundTrip":
-                Execute(DropTableSql(table.Name)); if (!Deploy(new(inspected.Schema.Tables.Values.ToArray()))) return;
-                var second = await Inspect(basic, [table]); var again = second.Schema!.Tables.Values.Single();
-                Assert.That(again.Identity, Is.EqualTo(actual.Identity));
-                Assert.That(again.Columns.Values.Select(c => (c.Name, c.Type)), Is.EqualTo(actual.Columns.Values.Select(c => (c.Name, c.Type)))); break;
-            default: Assert.Fail("No discovery assertion: " + scenario); break;
+            default: return false;
         }
+        return true;
     }
 }

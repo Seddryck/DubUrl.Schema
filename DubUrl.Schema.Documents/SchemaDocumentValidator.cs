@@ -91,6 +91,16 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         IReadOnlyDictionary<string, (TableDocument Table, int Index)> tables,
         List<SchemaDocumentDiagnostic> diagnostics)
     {
+        var viewLookup = ValidateViewDeclarations(views, tables, diagnostics);
+        ValidateViewSources(views, tables, viewLookup, diagnostics);
+        RunRules(new ViewGraphValidationContext(views, viewLookup), rules.ViewGraphRules, diagnostics);
+    }
+
+    private Dictionary<string, (ViewDocument View, int Index)> ValidateViewDeclarations(
+        IReadOnlyList<ViewDocument> views,
+        IReadOnlyDictionary<string, (TableDocument Table, int Index)> tables,
+        List<SchemaDocumentDiagnostic> diagnostics)
+    {
         var viewLookup = new Dictionary<string, (ViewDocument View, int Index)>(StringComparer.Ordinal);
         for (var viewIndex = 0; viewIndex < views.Count; viewIndex++)
         {
@@ -110,6 +120,15 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
                 rules.ViewDeclarationRules, diagnostics);
         }
 
+        return viewLookup;
+    }
+
+    private void ValidateViewSources(
+        IReadOnlyList<ViewDocument> views,
+        IReadOnlyDictionary<string, (TableDocument Table, int Index)> tables,
+        IReadOnlyDictionary<string, (ViewDocument View, int Index)> viewLookup,
+        List<SchemaDocumentDiagnostic> diagnostics)
+    {
         for (var viewIndex = 0; viewIndex < views.Count; viewIndex++)
         {
             var view = views[viewIndex];
@@ -134,9 +153,6 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
             RunRules(new ViewValidationContext(view, path, sourceTable, sourceView, sourceColumns, ValueConverter),
                 rules.ViewRules, diagnostics);
         }
-
-        RunRules(new ViewGraphValidationContext(views, viewLookup),
-            rules.ViewGraphRules, diagnostics);
     }
 
     private static IReadOnlyList<ColumnDocument> GetViewOutputColumns(ViewDocument view)

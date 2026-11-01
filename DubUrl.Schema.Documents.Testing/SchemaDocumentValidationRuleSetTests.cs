@@ -5,6 +5,14 @@ namespace DubUrl.Schema.Documents.Testing;
 
 public class SchemaDocumentValidationRuleSetTests
 {
+    private static void AssertDiagnostic(IEnumerable<SchemaDocumentDiagnostic> diagnostics, string code, string path)
+        => Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
+            item is not null && item.Code == code && item.Path == path));
+
+    private static void AssertNoDiagnosticAt(IEnumerable<SchemaDocumentDiagnostic> diagnostics, string path)
+        => Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
+            item is not null && item.Path == path));
+
     [Test]
     public void CreateDefault_ReturnsCompleteIndependentRuleSets()
     {
@@ -44,20 +52,13 @@ public class SchemaDocumentValidationRuleSetTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-COLUMN" && item.Path == "tables[1].columns[1]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-FOREIGN-KEY" && item.Path == "tables[1].foreignKeys[0]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-INDEX" && item.Path == "indexes[0]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-CHECK" && item.Path == "tables[1].checks[0]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-VIEW-DECLARATION" && item.Path == "views[0]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-VIEW" && item.Path == "views[0]"));
-            Assert.That(diagnostics, Has.Some.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Code == "CUSTOM-VIEW-GRAPH" && item.Path == "views"));
+            AssertDiagnostic(diagnostics, "CUSTOM-COLUMN", "tables[1].columns[1]");
+            AssertDiagnostic(diagnostics, "CUSTOM-FOREIGN-KEY", "tables[1].foreignKeys[0]");
+            AssertDiagnostic(diagnostics, "CUSTOM-INDEX", "indexes[0]");
+            AssertDiagnostic(diagnostics, "CUSTOM-CHECK", "tables[1].checks[0]");
+            AssertDiagnostic(diagnostics, "CUSTOM-VIEW-DECLARATION", "views[0]");
+            AssertDiagnostic(diagnostics, "CUSTOM-VIEW", "views[0]");
+            AssertDiagnostic(diagnostics, "CUSTOM-VIEW-GRAPH", "views");
         });
     }
 
@@ -85,18 +86,12 @@ public class SchemaDocumentValidationRuleSetTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "tables[0].columns[0].type"));
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "tables[1].foreignKeys[0].name"));
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "indexes[0].columns"));
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "tables[1].checks[0].kind"));
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "views[0].query.source"));
-            Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
-                item is not null && item.Path == "views[0].query.projections"));
+            AssertNoDiagnosticAt(diagnostics, "tables[0].columns[0].type");
+            AssertNoDiagnosticAt(diagnostics, "tables[1].foreignKeys[0].name");
+            AssertNoDiagnosticAt(diagnostics, "indexes[0].columns");
+            AssertNoDiagnosticAt(diagnostics, "tables[1].checks[0].kind");
+            AssertNoDiagnosticAt(diagnostics, "views[0].query.source");
+            AssertNoDiagnosticAt(diagnostics, "views[0].query.projections");
             Assert.That(diagnostics, Has.None.Matches<SchemaDocumentDiagnostic>(item =>
                 item is not null && item.Code == SchemaDocumentDiagnosticCodes.DuplicateView));
         });
