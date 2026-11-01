@@ -61,3 +61,10 @@ Each unit job retains its two canonical Cobertura reports in a separate coverage
 The upload check fails on upload errors. Coverage threshold validation remains a separate check and packaging continues to depend on that threshold, as in DubUrl.
 
 The shared NUnit fixtures live in DubUrl.Schema.QA. This internal helper is built with the solution and consumed by provider QA projects; it is not a test runner or a published package.
+
+
+## Mandatory provider feature coverage
+
+All seven database jobs execute the same 60-scenario manifest plus the original baseline and provider regression fixtures. The shared ProviderContract requires provider overrides for execution and typed catalog observations; assertions and required scenario names remain shared. QA/run.ps1 validates each required case passed exactly once and rejects skips. A global setup guard restricts even direct QA execution to .NET 10. See QA/README.md for the scenario families and explicit current provider limitations.
+
+Schema replacement now orders table drops by dependency, independently of whether creation uses inline or later foreign keys. Cyclic declaration rendering remains compatible for dialects that allow it. The new cross-dialect unit regression and all seven live suites cover the replacement behavior.

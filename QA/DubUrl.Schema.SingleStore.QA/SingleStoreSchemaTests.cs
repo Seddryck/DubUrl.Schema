@@ -7,7 +7,7 @@ using NUnit.Framework;
 namespace DubUrl.Provider.SingleStore.QA;
 
 [Category("SingleStore")]
-public sealed class SingleStoreSchemaTests : SchemaContract
+public sealed partial class SingleStoreSchemaTests : ProviderContract
 {
     protected override DbConnection CreateConnection() => SingleStoreTestDatabase.CreateConnection();
     protected override IDialect CreateDialect()

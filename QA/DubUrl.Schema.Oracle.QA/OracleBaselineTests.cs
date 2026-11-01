@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace DubUrl.Schema.Oracle.QA;
 
 [TestFixture, Category("Oracle")]
-public sealed class OracleBaselineTests : SchemaContract
+public sealed partial class OracleBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()
         => new OracleConnection(Environment.GetEnvironmentVariable("DUBURL_ORACLE_QA_CONNECTION_STRING") ?? throw new InvalidOperationException("Configure a disposable Oracle QA database."));

@@ -9,12 +9,12 @@ namespace DubUrl.Provider.Sqlite.QA;
 
 [TestFixture]
 [Category("Sqlite")]
-public sealed class SqliteSchemaTests : SchemaContract
+public sealed partial class SqliteSchemaTests : ProviderContract
 {
     protected override DbConnection CreateConnection()
     {
         SqliteTestDatabase.EnsureInitialized();
-        return new SqliteConnection(SqliteTestDatabase.ProviderConnectionString);
+        return new SqliteConnection(SqliteTestDatabase.ProviderConnectionString + ";Foreign Keys=True");
     }
 
     protected override IDialect CreateDialect()

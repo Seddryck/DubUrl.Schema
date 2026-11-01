@@ -18,6 +18,7 @@ public class SchemaScriptRenderer
     private RendererEngine[] Templates { get; } = [];
     private IDialect Dialect { get; }
     private NativeTypeRegistry NativeTypes { get; }
+    private bool DropExisting { get; }
     /// <summary>Whether descriptions can be rendered by this implementation.</summary>
     public bool SupportsComments { get; }
     public bool EngineSupportsComments => (Dialect.Capabilities ?? DialectCapabilities.Default).SupportsComments;
@@ -25,6 +26,7 @@ public class SchemaScriptRenderer
     public SchemaScriptRenderer(IDialect dialect, SchemaCreationOptions options = SchemaCreationOptions.None, NativeTypeRegistry? nativeTypes = null)
     {
         Dialect = dialect;
+        DropExisting = options == SchemaCreationOptions.DropIfExists;
         NativeTypes = nativeTypes ?? NativeTypeRegistry.Default;
         SupportsComments = CommentRenderer.Supports(dialect);
         var templates = new List<RendererEngine>();
@@ -58,7 +60,7 @@ public class SchemaScriptRenderer
             model = new
             {
                 Tables = tables.ToArray(),
-                TablesToDrop = tables.AsEnumerable().Reverse().ToArray(),
+                TablesToDrop = DropExisting ? OrderTablesToDrop(schema, tables) : tables.AsEnumerable().Reverse().ToArray(),
                 Indexes = indexes,
                 Views = orderedViews,
                 ViewsToDrop = orderedViews.Reverse().ToArray()
@@ -69,6 +71,21 @@ public class SchemaScriptRenderer
         foreach (var renderer in Templates)
             script.Append(renderer.Render(model));
         return script.ToString();
+    }
+
+    private TableViewModel[] OrderTablesToDrop(Schema schema, TableViewModel[] tables)
+    {
+        try
+        {
+            return TableDependencyPlanner.Order(schema.Tables.Values).Reverse()
+                .Select(table => tables.Single(model => model.Identity == table.Identity)).ToArray();
+        }
+        catch (NotSupportedException) when (!Dialect.SchemaSqlRenderer.RequiresForeignKeyDependencyOrder)
+        {
+            // Preserve the existing rendering contract for dialects accepting
+            // cyclic declarations. Such cycles have no topological drop order.
+            return tables.AsEnumerable().Reverse().ToArray();
+        }
     }
 
     private void ValidateCommentRendering(Schema schema)

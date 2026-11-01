@@ -13,10 +13,34 @@ CI runs all seven database jobs on .NET 10 only. The unit matrix still covers .N
 To use a deliberately configured disposable database without provisioning, run `dotnet test` directly and set the matching `DUBURL_*_QA_CONNECTION_STRING` variable. Discovery tests also require `DUBURL_POSTGRESQL_DISCOVERY_QA_CONNECTION_STRING` or `DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING`. The normal runner sets all required variables and fails on skips.
 
 
-## Shared baseline and provider features
+## Mandatory shared provider tests
 
-All seven providers inherit SchemaContract from the internal DubUrl.Schema.QA helper. The baseline declares table-creation support, renders and executes a two-column table, queries it and drops it. Provider fixtures supply the connection, dialect and identifier quoting; Oracle additionally removes the SQL*Plus terminator and uses plain DROP TABLE because its fixture does not declare DropTableIfExists support.
+Every provider fixture inherits ProviderContract (which extends SchemaContract) from the internal DubUrl.Schema.QA helper. All seven providers must implement the abstract connection, dialect, script execution, error-code, qualification, comments, column/index catalog, object-existence, metadata-reader and public-deployment hooks. A missing override is a compilation error. Shared code owns the assertions; provider code returns typed observations.
 
-The runner accepts only net10.0 and verifies both named baseline results passed exactly once in each provider's TRX. The CI database matrix remains net10.0 only. Projects can still compile alongside the multi-target solution; database execution is restricted to .NET 10.
+QA/shared-scenarios.json is the authoritative list of 60 required scenarios. The NUnit case source embeds that same manifest; each provider declares an explicit expectation for every scenario and rejects missing or extra declarations. The QA runner validates both original baseline results and every Shared_<scenario> result passed exactly once. Missing, duplicate, skipped or failed cases fail CI. NoDiscovery can only apply to discovery/diagnostic scenarios, never to disable deployment, constraint or comment tests.
 
-Additional feature tests remain separate: PostgreSQL/SQL Server share discovery tests; SQLite tests its metadata subset; DuckDB tests deployment and indexes; SQL Server tests extended-property comments; Oracle checks its catalog metadata. MySQL has a dedicated baseline QA project and retains its three bounded-key/check/comment integration cases in the existing test project, executed as a second .NET 10 run with independent result validation. Feature support is asserted only where implemented; the discovery fixture remains specific to PostgreSQL and SQL Server.
+The scenarios cover deployment/replacement, quoted names, comments and empty descriptions, type/facet/null/default behavior, identities and both generated-column modes, single/composite keys and relationships, dependency order, checks/null semantics/regex, indexes and sort order, views, feature-specific discovery/filtering/closure, partial/strict metadata, round trips, native CHAR/VARCHAR keys, expression/filtered-index and aggregate-view diagnostics, public and fluent deployment, and cleanup after failure.
+
+All original provider-specific regression fixtures remain, including SQL Server's qualified/unqualified same-batch extended-property comments with literal dots/apostrophes/Unicode/CRLF, SQLite's rich metadata diagnostic counts, Oracle's catalog check, DuckDB's public deployment/index tests, and MySQL's three inferred/native bounded-key/check/comment cases. MySQL's original feature cases run separately on the same disposable server and retain independent TRX validation.
+
+## Explicit current limitations
+
+A passing scenario means the declared behavior was verified, not that every engine implements the feature. Unsupported behavior is asserted without skips; each expectation includes its rationale and any required exception/error code. The expectations are written explicitly in each provider's Features.cs rather than inferred from the implementation under test.
+
+| Provider | Current expectations verified by the shared tests |
+|---|---|
+| PostgreSQL | Portable virtual generated columns are rejected; UNIQUE discovery reports SDI006 rather than inventing an index. |
+| SQLite | Comments have no native storage; portable identity/regex rendering is rejected; generated-expression/check/comment metadata has explicit diagnostics. The published unquoted identifier formatter rejects punctuation; discovered Schema qualifiers cannot currently be rendered back. String length is not enforced. |
+| DuckDB | Stored generated columns and filtered indexes are rejected; declared string length and index sort direction are not retained. |
+| SQL Server | Regex rendering is unavailable; expression indexes require computed columns. The adapter executes CREATE VIEW in its required separate batch, while comments stay together to detect batch-variable collisions. |
+| Oracle | The published dialect lacks comment, identity, generated-column, regex and portable-view renderers; it registers no schema discovery reader. Ordinary native catalog observations and supported deployment/index behavior are still tested. |
+| MySQL | Custom identity seed/increment is rejected; the provider registers no discovery reader. All three bounded-key forms, constraints and persisted comments remain tested. |
+| SingleStore | Foreign keys and portable UNIQUE declarations lacking shard-key configuration are rejected with specific codes; MySQL generated-column syntax is rejected. The pinned engine accepts but ignores CHECK clauses and table comments, while column comments persist. No discovery reader is registered. |
+
+Where discovery is absent, every discovery scenario verifies the real provider has no SchemaDiscoveryCapability and SchemaInspector returns SDI001. Where a reader exists, tests execute live DDL, read actual metadata, and assert values/coverage/diagnostic codes. This does not substitute fabricated metadata for a missing reader.
+
+## Framework and cleanup guarantees
+
+The runner accepts only net10.0. A global NUnit setup guard also prevents every provider fixture, including retained regressions, from touching a database under another runtime. QA projects still compile with the multi-target solution; the CI database matrix contains .NET 10 only.
+
+Each shared scenario opens its own connection, uses unique object names, records partially created objects, and verifies cleanup in finally. Embedded public-deployment tests use disposable files and close provider pools before deleting SQLite files. Container logs redact generated passwords and all provisioned containers/volumes are removed. MySQL readiness requires an authenticated TCP query against the initialized DubUrl database; the temporary socket-only bootstrap server cannot satisfy it.

@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace DubUrl.Schema.SqlServer.QA;
 
 [TestFixture, Category("SqlServer")]
-public sealed class SqlServerBaselineTests : SchemaContract
+public sealed partial class SqlServerBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()
         => new SqlConnection(Environment.GetEnvironmentVariable("DUBURL_SQLSERVER_DISCOVERY_QA_CONNECTION_STRING") ?? throw new InvalidOperationException("Configure a disposable SQL Server QA database."));

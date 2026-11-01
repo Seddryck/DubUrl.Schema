@@ -274,6 +274,19 @@ public class SchemaDdlSafetyTests
         Assert.That(sql, Does.Contain("COMMENT ON COLUMN \"table-name\".\"column-name\" IS 'Owner''s préféré';"));
     }
 
+    [Test]
+    public void DropIfExists_DropsDependentsBeforeParentsAcrossDialects()
+    {
+        foreach (var dialect in new[] { Dialect<PgsqlDialect>(), Dialect<MySqlDialect>(), Dialect<TSqlDialect>(), Dialect<SqliteDialect>(), Dialect<DuckDbDialect>() })
+        {
+            var sql = new SchemaScriptRenderer(dialect, SchemaCreationOptions.DropIfExists).Render(new Schema([Child(), Parent()]));
+            var drops = sql.Split(';').Where(statement => statement.Contains("DROP TABLE", StringComparison.Ordinal)).ToArray();
+            Assert.That(drops.Length, Is.EqualTo(2));
+            Assert.That(drops[0], Does.Contain("child"), dialect.GetType().Name);
+            Assert.That(drops[1], Does.Contain("parent"), dialect.GetType().Name);
+        }
+    }
+
     [TestCase(null)]
     [TestCase("VARCHAR")]
     [TestCase("CHAR")]

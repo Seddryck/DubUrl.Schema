@@ -9,7 +9,7 @@ namespace DubUrl.Provider.PostgreSql.QA;
 
 [TestFixture]
 [Category("Postgresql")]
-public sealed class PostgreSqlSchemaTests : SchemaContract
+public sealed partial class PostgreSqlSchemaTests : ProviderContract
 {
     protected override DbConnection CreateConnection()
         => new NpgsqlConnection(PostgreSqlTestDatabase.ProviderConnectionString);

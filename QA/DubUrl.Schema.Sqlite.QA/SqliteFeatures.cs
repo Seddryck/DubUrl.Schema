@@ -1,0 +1,91 @@
+using System.Data.Common;
+using Microsoft.Data.Sqlite;
+using DubUrl.Discovery;
+using DubUrl.Schema;
+using DubUrl.Schema.QA;
+using DubUrl.Provider.Sqlite.Discovery;
+
+namespace DubUrl.Provider.Sqlite.QA;
+
+public sealed partial class SqliteSchemaTests
+{
+    protected override IReadOnlyDictionary<string,FeatureExpectation> FeatureExpectations { get; } =
+        new Dictionary<string,FeatureExpectation>
+        {
+            ["ReplaceTable"] = FeatureExpectation.Supported,
+            ["QuotedIdentifiers"] = new(ExpectedOutcome.DatabaseRejects,"The published SQLite identifier formatter leaves literal punctuation unquoted.","1"),
+            ["TableComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["ColumnComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["EmptyComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["CommentsSameBatch"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["QualifiedComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["UnqualifiedComments"] = new(ExpectedOutcome.NoEngineComments,"SQLite has no native table/column comments."),
+            ["ColumnTypes"] = FeatureExpectation.Supported,
+            ["ColumnFacets"] = new(ExpectedOutcome.NotEnforced,"The engine retains numeric facets but does not enforce declared string length."),
+            ["Nullability"] = FeatureExpectation.Supported,
+            ["LiteralDefaults"] = FeatureExpectation.Supported,
+            ["IdentityDefault"] = new(ExpectedOutcome.RendererRejects,"Portable identity columns are explicitly rejected by the SQLite renderer.","auto-increment"),
+            ["IdentitySeedIncrement"] = new(ExpectedOutcome.RendererRejects,"Portable identity columns are explicitly rejected by the SQLite renderer.","auto-increment"),
+            ["GeneratedStored"] = FeatureExpectation.Supported,
+            ["GeneratedVirtual"] = FeatureExpectation.Supported,
+            ["SinglePrimaryKey"] = FeatureExpectation.Supported,
+            ["CompositePrimaryKey"] = FeatureExpectation.Supported,
+            ["SingleUnique"] = FeatureExpectation.Supported,
+            ["CompositeUnique"] = FeatureExpectation.Supported,
+            ["ForeignKey"] = FeatureExpectation.Supported,
+            ["CompositeForeignKey"] = FeatureExpectation.Supported,
+            ["DependencyCreate"] = FeatureExpectation.Supported,
+            ["DependencyDrop"] = FeatureExpectation.Supported,
+            ["ComparisonCheck"] = FeatureExpectation.Supported,
+            ["MembershipCheck"] = FeatureExpectation.Supported,
+            ["RegexCheck"] = new(ExpectedOutcome.RendererRejects,"SQLite has no built-in regular expression check renderer.","Regular-expression"),
+            ["SingleIndex"] = FeatureExpectation.Supported,
+            ["CompositeIndex"] = FeatureExpectation.Supported,
+            ["UniqueIndex"] = FeatureExpectation.Supported,
+            ["IndexDirection"] = FeatureExpectation.Supported,
+            ["ProjectionView"] = FeatureExpectation.Supported,
+            ["DiscoveryTablesColumns"] = FeatureExpectation.Supported,
+            ["DiscoveryFacets"] = FeatureExpectation.Supported,
+            ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
+            ["DiscoveryUnique"] = new(ExpectedOutcome.NotEnforced,"The inspector reports named UNIQUE constraints as SDI006 rather than silently mapping them."),
+            ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
+            ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"SQLite has no portable identity renderer.","auto-increment"),
+            ["DiscoveryChecks"] = new(ExpectedOutcome.NotEnforced,"SQLite explicitly reports unsupported check discovery."),
+            ["DiscoveryGeneration"] = new(ExpectedOutcome.NotEnforced,"SQLite reports unavailable generation expressions and unsupported comment metadata."),
+            ["DiscoveryComments"] = new(ExpectedOutcome.NotEnforced,"SQLite reports unavailable generation expressions and unsupported comment metadata."),
+            ["DiscoveryIndexes"] = FeatureExpectation.Supported,
+            ["DiscoveryViews"] = FeatureExpectation.Supported,
+            ["DiscoveryTableFilter"] = FeatureExpectation.Supported,
+            ["DiscoverySchemaFilter"] = FeatureExpectation.Supported,
+            ["DiscoveryClosure"] = FeatureExpectation.Supported,
+            ["DiscoveryPartial"] = FeatureExpectation.Supported,
+            ["DiscoveryStrict"] = FeatureExpectation.Supported,
+            ["DiscoveryRoundTrip"] = new(ExpectedOutcome.RendererRejects,"SQLite discovery returns a Schema qualifier that its renderer rejects.","Schema"),
+            ["NativeVarcharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
+            ["NativeCharKey"] = new(ExpectedOutcome.RendererRejects,"The provider does not register these explicit native type names.","native type"),
+            ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
+            ["FilteredIndexDiagnostic"] = FeatureExpectation.Supported,
+            ["AggregateViewDiagnostic"] = FeatureExpectation.Supported,
+            ["MissingReferenceDiagnostic"] = FeatureExpectation.Supported,
+            ["DiagnosticDetails"] = FeatureExpectation.Supported,
+            ["PublicDeployment"] = FeatureExpectation.Supported,
+            ["FluentDeployment"] = FeatureExpectation.Supported,
+            ["CleanupAfterFailure"] = FeatureExpectation.Supported,
+        };
+    protected override void ExecuteScript(DbConnection connection,string script) => QaSql.Execute(connection,script);
+    protected override string DatabaseErrorCode(DbException exception) => ((SqliteException)exception).SqliteErrorCode.ToString();
+    protected override string CurrentSchema(DbConnection connection) => "main";
+    protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,database:CurrentSchema(connection));
+    protected override ISchemaMetadataReader? CreateMetadataReader() => new SqliteMetadataReader();
+    protected override int? ExpectedDiscoveredStringLength => 40;
+    protected override GeneratedColumnStorage DiscoveryGenerationStorage => GeneratedColumnStorage.Stored;
+    protected override PublicDatabase CreatePublicDatabase() => QaSql.FileDatabase("sqlite",SqliteFactory.Instance,"Microsoft.Data.Sqlite",SqliteConnection.ClearAllPools);
+    protected override string ExpressionIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ((UPPER({column})))";
+    protected override string FilteredIndexSql(string index,string table,string column) => $"CREATE INDEX {index} ON {table} ({column}) WHERE {column}>0";
+    protected override IReadOnlyList<ColumnFact> ReadColumns(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderColumns(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
+    protected override IReadOnlyList<IndexFact> ReadIndexes(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderIndexes(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
+    protected override CommentFact ReadComments(DbConnection connection,DatabaseObjectName table) => QaSql.ReaderComments(connection,new SqliteMetadataReader(),CurrentSchema(connection),table.Name);
+    protected override bool ObjectExists(DbConnection connection,DatabaseObjectName name,bool view)
+        => Convert.ToInt64(QaSql.Rows(connection,"SELECT COUNT(*) FROM sqlite_schema WHERE name=@name AND type=@kind",("name",name.Name),("kind",view ? "view" : "table")).Single()[0])!=0;
+}

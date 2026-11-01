@@ -8,7 +8,7 @@ using NUnit.Framework;
 namespace DubUrl.Schema.MySql.QA;
 
 [TestFixture, Category("MySql")]
-public sealed class MySqlBaselineTests : SchemaContract
+public sealed partial class MySqlBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()
         => new MySqlConnection(Environment.GetEnvironmentVariable("DUBURL_SCHEMA_MYSQL") ?? throw new InvalidOperationException("Configure a disposable MySQL QA database."));

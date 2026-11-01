@@ -2,6 +2,7 @@
 from pathlib import Path
 import tempfile
 import unittest
+import json
 import xml.etree.ElementTree as ET
 from assert_results import validate
 
@@ -48,6 +49,30 @@ class SchemaBaselineResultsTests(unittest.TestCase):
                     ["Passed", "NotExecuted"])
         with self.assertRaisesRegex(ValueError, "shared schema baseline"):
             validate(self.directory.name, require_schema_baseline=True)
+
+    def shared_names(self):
+        return ["Shared_" + name for name in json.loads((Path(__file__).resolve().parents[1] / "QA/shared-scenarios.json").read_text(encoding="utf-8"))]
+
+    def test_accepts_all_mandatory_shared_scenarios(self):
+        self.report(self.shared_names())
+        validate(self.directory.name, require_shared_scenarios=True)
+
+    def test_rejects_one_missing_shared_scenario(self):
+        self.report(self.shared_names()[:-1])
+        with self.assertRaisesRegex(ValueError, "Required shared provider scenario"):
+            validate(self.directory.name, require_shared_scenarios=True)
+
+    def test_rejects_duplicate_shared_scenario(self):
+        names = self.shared_names()
+        self.report(names + names[:1])
+        with self.assertRaisesRegex(ValueError, "exactly once"):
+            validate(self.directory.name, require_shared_scenarios=True)
+
+    def test_rejects_failed_shared_scenario_even_with_inconsistent_counters(self):
+        names = self.shared_names()
+        self.report(names, ["Passed"] * (len(names) - 1) + ["Failed"])
+        with self.assertRaisesRegex(ValueError, "Required shared provider scenario"):
+            validate(self.directory.name, require_shared_scenarios=True)
 
 
 if __name__ == "__main__":

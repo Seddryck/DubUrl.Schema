@@ -52,7 +52,7 @@ try {
     $fixtureResults = Join-Path $results 'fixtures'
     dotnet test $project -c Release -f $Framework --no-build --no-restore --logger trx --results-directory $fixtureResults --nologo
     if ($LASTEXITCODE) { throw 'Schema database tests failed.' }
-    python build/assert_results.py $fixtureResults --require-schema-baseline
+    python build/assert_results.py $fixtureResults --require-schema-baseline --require-shared-scenarios
     if ($LASTEXITCODE) { throw 'Required schema database results were missing or skipped.' }
     if ($Database -eq 'MySql') {
         $features = Join-Path $root 'DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj'
