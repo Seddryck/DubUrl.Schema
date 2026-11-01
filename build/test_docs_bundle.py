@@ -13,6 +13,7 @@ class DocsBundleTests(unittest.TestCase):
             self.assertEqual(build(first, "1.2.0", "a" * 40), build(second, "1.2.0", "a" * 40))
             self.assertEqual(first.read_bytes(), second.read_bytes())
             with zipfile.ZipFile(first) as archive:
+                self.assertTrue(all(info.create_system == 3 for info in archive.infolist()))
                 manifest=json.loads(archive.read("manifest.json"))
                 self.assertEqual(set(archive.namelist()), {"manifest.json", *manifest["files"]})
                 self.assertEqual(len(manifest["files"]), 13)
