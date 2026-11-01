@@ -29,9 +29,12 @@ public class CreateIndexRenderer : RendererEngine
         : base(typeof(CreateIndexRenderer).Assembly, $"{typeof(CreateIndexRenderer).Namespace}.Templates.CreateIndexes.sql.hbs")
     {
         if (!helpers.ContainsKey("indexname"))
+        {
             AddFormatter("indexname", value => value is IndexViewModel index
                 ? helpers["objectname"](index.Identity)
                 : throw new ArgumentException("Index naming requires an index view model."));
+        }
+
         foreach (var helper in helpers)
             AddFormatter(helper.Key, helper.Value);
     }

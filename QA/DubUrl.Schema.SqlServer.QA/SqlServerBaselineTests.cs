@@ -7,7 +7,8 @@ using NUnit.Framework;
 
 namespace DubUrl.Schema.SqlServer.QA;
 
-[TestFixture, Category("SqlServer")]
+[TestFixture]
+[Category("SqlServer")]
 public sealed partial class SqlServerBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()

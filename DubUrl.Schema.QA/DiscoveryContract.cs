@@ -14,7 +14,8 @@ public abstract class DiscoveryContract
     protected abstract IDialect CreateDialect();
     protected abstract bool IsSqlServer { get; }
 
-    [Test, Category("Discovery")]
+    [Test]
+    [Category("Discovery")]
     public async Task Discovery_QuotedNamesCompositeKeysFacetsFilteringAndRoundTrip()
     {
         await using var connection = CreateConfiguredConnection();
@@ -67,7 +68,8 @@ public abstract class DiscoveryContract
         }
     }
 
-    [Test, Category("Discovery")]
+    [Test]
+    [Category("Discovery")]
     public async Task Discovery_RichMetadataAndUnsupportedStructures_AreDistinguished()
     {
         await using var connection = CreateConfiguredConnection();

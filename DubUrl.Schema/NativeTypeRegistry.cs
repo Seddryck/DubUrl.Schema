@@ -8,7 +8,8 @@ public sealed class NativeTypeRegistry
 
     public static NativeTypeRegistry Default { get; } = new();
 
-    public NativeTypeRegistry Register<TDialect>(params string[] typeNames) where TDialect : IDialect
+    public NativeTypeRegistry Register<TDialect>(params string[] typeNames)
+        where TDialect : IDialect
     {
         if (!mappings.TryGetValue(typeof(TDialect), out var types))
             mappings.Add(typeof(TDialect), types = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase));
@@ -29,8 +30,10 @@ public sealed class NativeTypeRegistry
         }
 
         foreach (var mapping in mappings)
+        {
             if (mapping.Key.IsInstanceOfType(dialect) && mapping.Value.TryGetValue(nativeType.Name, out resolvedType!))
                 return true;
+        }
 
         if ((dialect.Capabilities ?? DialectCapabilities.Default).NativeTypes.Contains(nativeType.Name))
         {

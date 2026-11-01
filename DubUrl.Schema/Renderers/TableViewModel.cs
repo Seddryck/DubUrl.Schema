@@ -38,8 +38,11 @@ public class TableViewModel
         Columns = table.Columns.Values.Select(c => new ColumnViewModel(c, primaryKey is null, table.Identity,
             primaryNames.SetEquals([c.Name]))).ToArray();
         foreach (var column in Columns)
+        {
             column.IsKey |= primaryNames.Contains(column.Name)
                 || UniqueConstraints.Any(unique => unique.Columns.Any(item => item.Name == column.Name));
+        }
+
         Nullable = table.Constraints.Get<NullableConstraint>();
         NotNullable = table.Constraints.Get<NotNullableConstraint>();
         Unique = table.Constraints.Get<UniquenessConstraint>();

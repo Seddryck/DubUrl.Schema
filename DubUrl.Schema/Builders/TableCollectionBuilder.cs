@@ -8,14 +8,15 @@ using System.Threading.Tasks;
 namespace DubUrl.Schema.Builders;
 
 /// <summary>
-/// Adds a new table to the collection.
+/// Builds a collection of tables.
 /// </summary>
-/// <param name="tableBuilder">A function that configures and returns a table builder.</param>
-/// <returns>This instance for method chaining.</returns>
 public class TableCollectionBuilder : IEnumerable<ITableBuilder>
 {
     private List<ITableBuilder> Tables { get; } = [];
 
+    /// <summary>Adds a new table to the collection.</summary>
+    /// <param name="table">A function that configures and returns a table builder.</param>
+    /// <returns>This instance for method chaining.</returns>
     public TableCollectionBuilder Add(Func<TableBuilder, ITableBuilder> table)
     {
         ArgumentNullException.ThrowIfNull(table);

@@ -5,7 +5,15 @@ using NUnit.Framework;
 
 namespace DubUrl.Schema.QA;
 
-public enum ExpectedOutcome { Supported, RendererRejects, DatabaseRejects, NoDiscovery, NoEngineComments, NotEnforced }
+public enum ExpectedOutcome
+{
+    Supported,
+    RendererRejects,
+    DatabaseRejects,
+    NoDiscovery,
+    NoEngineComments,
+    NotEnforced
+}
 public sealed record FeatureExpectation(ExpectedOutcome Outcome, string Evidence, params string[] ErrorCodes)
 {
     public string? ErrorFragment { get; init; }
@@ -130,7 +138,10 @@ public static class QaSql
                 if (!string.IsNullOrWhiteSpace(statement.ToString())) yield return statement.ToString().Trim();
                 statement.Clear();
             }
-            else statement.Append(c);
+            else
+            {
+                statement.Append(c);
+            }
         }
         if (!string.IsNullOrWhiteSpace(statement.ToString())) yield return statement.ToString().Trim();
     }

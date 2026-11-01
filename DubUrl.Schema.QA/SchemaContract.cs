@@ -18,11 +18,13 @@ public abstract class SchemaContract
     protected virtual string DropTableSql(string name)
         => $"drop table {(Capabilities.HasFlag(SchemaCapabilities.DropTableIfExists) ? "if exists " : "")}{QuoteIdentifier(name)}";
 
-    [Test, Category("SchemaBaseline")]
+    [Test]
+    [Category("SchemaBaseline")]
     public void DeclaresCreateTableCapability()
         => Assert.That(Capabilities.HasFlag(SchemaCapabilities.CreateTable), Is.True);
 
-    [Test, Category("SchemaBaseline")]
+    [Test]
+    [Category("SchemaBaseline")]
     public void RendersAndDeploysSchema()
     {
         var tableName = $"DubUrlQa_{Guid.NewGuid().ToString("N")[..20]}";

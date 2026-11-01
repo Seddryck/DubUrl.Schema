@@ -63,6 +63,7 @@ public sealed class SchemaDocumentExporter
             Columns = table.Columns.Values.Select(Column).ToList()
         };
         foreach (var constraint in table.Constraints)
+        {
             switch (constraint)
             {
                 case PrimaryKeyConstraint pk:
@@ -80,6 +81,8 @@ public sealed class SchemaDocumentExporter
                     result.Checks.Add(Check(constraint)); break;
                 default: throw new NotSupportedException("Unsupported table constraint.");
             }
+        }
+
         return result;
     }
 
@@ -125,19 +128,27 @@ public sealed class SchemaDocumentExporter
     private static void MapColumnGeneration(Column column, ColumnDocument result)
     {
         if (column.Generation is IdentityColumnGeneration identity)
+        {
             result.Identity = new() { Seed = identity.Seed, Increment = identity.Increment };
+        }
         else if (column.Generation is GeneratedColumnGeneration generated)
+        {
             result.Generated = new()
             {
                 Expression = Expression(generated.Expression),
                 Storage = generated.Storage == GeneratedColumnStorage.Stored ? "stored" : "virtual"
             };
-        else if (column.Generation is not null) throw new NotSupportedException();
+        }
+        else if (column.Generation is not null)
+        {
+            throw new NotSupportedException();
+        }
     }
 
     private static void MapColumnConstraints(Column column, ColumnDocument result)
     {
         foreach (var constraint in column.Constraints)
+        {
             switch (constraint)
             {
                 case NullableConstraint or NotNullableConstraint: break;
@@ -145,6 +156,7 @@ public sealed class SchemaDocumentExporter
                 case CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint: result.Checks.Add(Check(constraint)); break;
                 default: throw new NotSupportedException("Unsupported column constraint.");
             }
+        }
     }
 
     private static CheckDocument Check(IConstraint constraint) => constraint switch

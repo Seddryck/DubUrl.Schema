@@ -19,7 +19,8 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaDdlSafetyTests
 {
-    private static IDialect Dialect<T>() where T : IDialect
+    private static IDialect Dialect<T>()
+        where T : IDialect
     {
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<T>([typeof(T).Name]);

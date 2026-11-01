@@ -36,9 +36,11 @@ public class Table
             var primaryKey = primaryKeys[0];
             var unknownColumns = primaryKey.Columns.Keys.Where(column => !Columns.ContainsKey(column)).ToArray();
             if (unknownColumns.Length > 0)
+            {
                 throw new ArgumentException(
                     $"Primary key references unknown column(s) {string.Join(", ", unknownColumns)} in table '{Name}'.",
                     nameof(constraints));
+            }
 
             var normalizedPrimaryKey = new PrimaryKeyConstraint(
                 primaryKey.Columns.Keys.Select(column => Columns[column]).ToArray(),

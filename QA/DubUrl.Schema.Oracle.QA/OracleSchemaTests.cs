@@ -6,7 +6,9 @@ using NUnit.Framework;
 
 namespace DubUrl.Provider.Oracle.QA;
 
-[TestFixture, Category("Oracle"), Category("Schema")]
+[TestFixture]
+[Category("Oracle")]
+[Category("Schema")]
 public sealed class OracleSchemaTests
 {
     [Test]

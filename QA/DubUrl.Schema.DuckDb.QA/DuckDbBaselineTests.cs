@@ -7,7 +7,8 @@ using NUnit.Framework;
 
 namespace DubUrl.Schema.DuckDb.QA;
 
-[TestFixture, Category("DuckDb")]
+[TestFixture]
+[Category("DuckDb")]
 public sealed partial class DuckDbBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()

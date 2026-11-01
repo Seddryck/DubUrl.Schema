@@ -29,9 +29,11 @@ public sealed class ForeignKeyConstraint : Constraint
         TargetTableName = targetTable.Name;
         TargetColumns = ValidateColumns(targetColumns, nameof(targetColumns));
         if (SourceColumns.Count != TargetColumns.Count)
+        {
             throw new ArgumentException(
                 $"Foreign key '{name}' has {SourceColumns.Count} source columns but {TargetColumns.Count} target columns.",
                 nameof(targetColumns));
+        }
     }
 
     private static string[] ValidateColumns(IEnumerable<string> columns, string parameterName)

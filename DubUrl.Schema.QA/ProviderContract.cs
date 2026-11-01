@@ -45,10 +45,10 @@ public abstract class ProviderContract : SchemaContract
         if (expectation.ErrorFragment is not null) Assert.That(error.Message, Does.Contain(expectation.ErrorFragment).IgnoreCase);
     }
 
-    private DbConnection database = null!;
-    private IDialect dialect = null!;
     private readonly List<Table> tables = [];
     private readonly List<DatabaseObjectName> views = [];
+    private DbConnection database = null!;
+    private IDialect dialect = null!;
     private string prefix = "";
     private FeatureExpectation expectation = null!;
     private string Name(string suffix) => prefix + suffix;
@@ -61,7 +61,8 @@ public abstract class ProviderContract : SchemaContract
         => new(name, DbType.AnsiString, 40, description: description);
     private Schema Simple(DatabaseObjectName? name = null) => new([new Table(name ?? new(Name("table")), [Id(), Text()])]);
 
-    [TestCaseSource(nameof(SharedScenarios)), Category("SharedProviderContract")]
+    [TestCaseSource(nameof(SharedScenarios))]
+    [Category("SharedProviderContract")]
     public async Task Shared(string scenario)
     {
         Assert.That(FeatureExpectations.Keys, Is.EquivalentTo(ScenarioNames()), "Declare every scenario explicitly.");
@@ -132,7 +133,12 @@ public abstract class ProviderContract : SchemaContract
                             Execute($"INSERT INTO {Q(table.Identity)} VALUES ({QaSql.Literal(new string('x', 41))},1)");
                             Assert.That(expectation.Evidence, Does.Contain("length"));
                         }
-                        else Assert.That(columns.Single(c => c.Name == "title").Length, Is.EqualTo(40)); break;
+                        else
+                        {
+                            Assert.That(columns.Single(c => c.Name == "title").Length, Is.EqualTo(40));
+                        }
+
+                        break;
                     }
                 case "Nullability":
                     {
@@ -313,7 +319,11 @@ public abstract class ProviderContract : SchemaContract
         {
             Execute(invalid); Assert.That(Convert.ToInt64(Scalar($"SELECT COUNT(*) FROM {Q(table.Identity)}")), Is.GreaterThan(1));
         }
-        else Assert.That(() => Execute(invalid), Throws.InstanceOf<DbException>());
+        else
+        {
+            Assert.That(() => Execute(invalid), Throws.InstanceOf<DbException>());
+        }
+
         if (scenario == "RegexCheck" && expectation.Outcome != ExpectedOutcome.NotEnforced)
             Assert.That(() => Execute($"INSERT INTO {Q(table.Identity)} VALUES (NULL)"), Throws.InstanceOf<DbException>());
     }

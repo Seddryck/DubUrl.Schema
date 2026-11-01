@@ -376,8 +376,10 @@ public sealed class SchemaDocumentValidationRuleSet
             ArgumentNullException.ThrowIfNull(rule);
             ArgumentException.ThrowIfNullOrWhiteSpace(rule.Id);
             if (!identifiers.Add(rule.Id))
+            {
                 throw new ArgumentException($"A validation rule with identifier '{rule.Id}' is already registered.",
                     nameof(rules));
+            }
         }
     }
 }

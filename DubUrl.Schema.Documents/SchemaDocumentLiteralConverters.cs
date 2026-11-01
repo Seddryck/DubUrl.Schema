@@ -34,13 +34,18 @@ public sealed class SchemaDocumentLiteralConverterRegistry
             ArgumentNullException.ThrowIfNull(converter);
             ArgumentException.ThrowIfNullOrWhiteSpace(converter.Id);
             if (!identifiers.Add(converter.Id))
+            {
                 throw new ArgumentException(
                     $"A literal converter with identifier '{converter.Id}' is already registered.",
                     nameof(converters));
+            }
+
             if (!byType.TryAdd(converter.Type, converter))
+            {
                 throw new ArgumentException(
                     $"A literal converter for logical type '{converter.Type}' is already registered.",
                     nameof(converters));
+            }
         }
 
         Converters = new ReadOnlyCollection<ILiteralValueConverter>(snapshot);
@@ -60,8 +65,11 @@ public sealed class SchemaDocumentLiteralConverterRegistry
     {
         ArgumentNullException.ThrowIfNull(converter);
         if (!convertersByType.TryGetValue(converter.Type, out var existing))
+        {
             throw new InvalidOperationException(
                 $"No literal converter for logical type '{converter.Type}' is registered.");
+        }
+
         return new SchemaDocumentLiteralConverterRegistry(
             Converters.Select(item => ReferenceEquals(item, existing) ? converter : item));
     }

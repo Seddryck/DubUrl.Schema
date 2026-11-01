@@ -8,9 +8,13 @@ namespace DubUrl.Schema.Constraints;
 public class UniquenessConstraint : Constraint
 {
     /// <summary>Empty for a column constraint; explicit column set for a table constraint.</summary>
+    /// <value>
+    /// Empty for a column constraint; explicit column set for a table constraint.
+    /// </value>
     public IReadOnlyList<Column> Columns { get; } = [];
 
-    public UniquenessConstraint(Column[] columns, string? name = null) : base(name)
+    public UniquenessConstraint(Column[] columns, string? name = null)
+        : base(name)
     {
         ArgumentNullException.ThrowIfNull(columns);
         if (columns.Length == 0 || columns.Any(column => column is null)

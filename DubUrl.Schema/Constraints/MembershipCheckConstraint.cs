@@ -24,14 +24,20 @@ public sealed class MembershipCheckConstraint : Constraint
         if (Values.Count == 0)
             throw new ArgumentException("A membership check requires at least one value.", nameof(values));
         if (Values.Any(value => value is null) && nullBehavior == NullMembershipBehavior.SqlThreeValuedLogic)
+        {
             throw new ArgumentException(
                 "Null values require NullMembershipBehavior.MatchNull so that null semantics are explicit.",
                 nameof(values));
+        }
+
         var valueTypes = Values.Where(value => value is not null).Select(value => value!.GetType()).Distinct().ToArray();
         if (valueTypes.Length > 1)
+        {
             throw new ArgumentException(
                 $"Membership values must have compatible types; found {string.Join(", ", valueTypes.Select(type => type.Name))}.",
                 nameof(values));
+        }
+
         NullBehavior = nullBehavior;
     }
 }

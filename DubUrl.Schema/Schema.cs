@@ -11,6 +11,9 @@ public class Schema
     public OrderedImmutableDictionary<string, Index> Indexes { get; }
     public OrderedImmutableDictionary<string, View> Views { get; }
     /// <summary>Pre-existing reference tables. Validated but never created or dropped.</summary>
+    /// <value>
+    /// Pre-existing reference tables. Validated but never created or dropped.
+    /// </value>
     public OrderedImmutableDictionary<string, Table> ExternalTables { get; }
 
     public Schema(Table[] tables)
@@ -70,21 +73,28 @@ public class Schema
     private void ValidateForeignKeys(Table[] tables)
     {
         foreach (var table in tables)
-        foreach (var foreignKey in table.Constraints.OfType<Constraints.ForeignKeyConstraint>())
         {
-            var missingSourceColumns = foreignKey.SourceColumns.Where(name => !table.Columns.ContainsKey(name)).ToArray();
-            if (missingSourceColumns.Length > 0)
-                throw new ArgumentException($"Foreign key '{foreignKey.Name}' references missing source column(s) {string.Join(", ", missingSourceColumns)} on table '{table.Name}'.", nameof(tables));
-            if (!Tables.TryGetValue(foreignKey.TargetTable.Key, out var targetTable)
-                && !ExternalTables.TryGetValue(foreignKey.TargetTable.Key, out targetTable))
-                throw new ArgumentException(
-                    $"Foreign key '{foreignKey.Name}' on table '{table.Name}' references missing table '{foreignKey.TargetTableName}'.",
-                    nameof(tables));
-            var missingColumns = foreignKey.TargetColumns.Where(name => !targetTable.Columns.ContainsKey(name)).ToArray();
-            if (missingColumns.Length > 0)
-                throw new ArgumentException(
-                    $"Foreign key '{foreignKey.Name}' references missing target column(s) {string.Join(", ", missingColumns)} on table '{targetTable.Name}'.",
-                    nameof(tables));
+            foreach (var foreignKey in table.Constraints.OfType<Constraints.ForeignKeyConstraint>())
+            {
+                var missingSourceColumns = foreignKey.SourceColumns.Where(name => !table.Columns.ContainsKey(name)).ToArray();
+                if (missingSourceColumns.Length > 0)
+                    throw new ArgumentException($"Foreign key '{foreignKey.Name}' references missing source column(s) {string.Join(", ", missingSourceColumns)} on table '{table.Name}'.", nameof(tables));
+                if (!Tables.TryGetValue(foreignKey.TargetTable.Key, out var targetTable)
+                    && !ExternalTables.TryGetValue(foreignKey.TargetTable.Key, out targetTable))
+                {
+                    throw new ArgumentException(
+                        $"Foreign key '{foreignKey.Name}' on table '{table.Name}' references missing table '{foreignKey.TargetTableName}'.",
+                        nameof(tables));
+                }
+
+                var missingColumns = foreignKey.TargetColumns.Where(name => !targetTable.Columns.ContainsKey(name)).ToArray();
+                if (missingColumns.Length > 0)
+                {
+                    throw new ArgumentException(
+                        $"Foreign key '{foreignKey.Name}' references missing target column(s) {string.Join(", ", missingColumns)} on table '{targetTable.Name}'.",
+                        nameof(tables));
+                }
+            }
         }
     }
 
@@ -93,15 +103,20 @@ public class Schema
         foreach (var index in indexes)
         {
             if (!Tables.ContainsKey(index.TableIdentity.Key))
+            {
                 throw new ArgumentException(
                     $"Index '{index.Identity}' references missing table '{index.TableIdentity}'.",
                     nameof(indexes));
+            }
+
             var table = Tables[index.TableIdentity.Key];
             var missingColumns = index.Columns.Keys.Where(column => !table.Columns.ContainsKey(column)).ToArray();
             if (missingColumns.Length > 0)
+            {
                 throw new ArgumentException(
                     $"Index '{index.Identity}' references missing column(s) {string.Join(", ", missingColumns)} on table '{table.Identity}'.",
                     nameof(indexes));
+            }
         }
     }
 
@@ -110,25 +125,33 @@ public class Schema
         var duplicatedViews = views.GroupBy(view => view.Identity).Where(group => group.Count() > 1)
             .Select(group => group.Key).ToArray();
         if (duplicatedViews.Length > 0)
+        {
             throw new ArgumentException(
                 $"Duplicate view names found: {string.Join(", ", duplicatedViews.Select(identity => identity.ToString()))}",
                 nameof(views));
+        }
 
         var tableViewCollisions = views.Where(view => Tables.ContainsKey(view.Identity.Key))
             .Select(view => view.Identity).ToArray();
         if (tableViewCollisions.Length > 0)
+        {
             throw new ArgumentException(
                 $"Table and view identities must be unique: {string.Join(", ", tableViewCollisions.Select(identity => identity.ToString()))}",
                 nameof(views));
+        }
     }
 
     private void ValidateViewSources(View[] views)
     {
         foreach (var view in views)
+        {
             if (!Tables.ContainsKey(view.Query.Source.Key) && !Views.ContainsKey(view.Query.Source.Key))
+            {
                 throw new ArgumentException(
                     $"View '{view.Identity}' references missing source relation '{view.Query.Source}'.",
                     nameof(views));
+            }
+        }
     }
 
     public Table GetTable(DatabaseObjectName identity)

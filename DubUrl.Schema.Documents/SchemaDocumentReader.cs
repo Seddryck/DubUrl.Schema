@@ -49,9 +49,11 @@ public sealed class SchemaDocumentReader
         if (document.Version == 0)
             throw new SchemaDocumentException("The schema document must declare a version.", sourceName);
         if (document.Version != SchemaDocument.SupportedVersion)
+        {
             throw new SchemaDocumentException(
                 $"Schema document version {document.Version} is not supported; supported versions: {SchemaDocument.SupportedVersion}.",
                 sourceName);
+        }
 
         return document;
     }

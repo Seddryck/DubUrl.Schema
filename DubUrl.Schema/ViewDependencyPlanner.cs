@@ -13,11 +13,13 @@ internal static class ViewDependencyPlanner
             StringComparer.Ordinal);
 
         foreach (var view in declared)
+        {
             if (byKey.TryGetValue(view.Query.Source.Key, out var dependency))
             {
                 indegree[view.Identity.Key]++;
                 dependents[dependency.Identity.Key].Add(view);
             }
+        }
 
         var ordered = new List<View>(declared.Length);
         var emitted = new HashSet<string>(StringComparer.Ordinal);
@@ -26,9 +28,11 @@ internal static class ViewDependencyPlanner
             var next = declared.FirstOrDefault(view =>
                 !emitted.Contains(view.Identity.Key) && indegree[view.Identity.Key] == 0);
             if (next is null)
+            {
                 throw new ArgumentException(
                     $"View dependency cycle detected: {string.Join(" -> ", FindCycle(declared, byKey))}.",
                     nameof(views));
+            }
 
             ordered.Add(next);
             emitted.Add(next.Identity.Key);
@@ -51,8 +55,10 @@ internal static class ViewDependencyPlanner
             while (true)
             {
                 if (positions.TryGetValue(current.Identity.Key, out var cycleStart))
+                {
                     return path.Skip(cycleStart).Select(view => view.Identity.ToString())
                         .Append(current.Identity.ToString()).ToArray();
+                }
 
                 positions[current.Identity.Key] = path.Count;
                 path.Add(current);

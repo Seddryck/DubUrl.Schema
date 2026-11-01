@@ -18,5 +18,4 @@ public sealed partial class SingleStoreSchemaTests : ProviderContract
     }
     protected override SchemaCapabilities Capabilities => SchemaCapabilities.CreateTable | SchemaCapabilities.DropTableIfExists;
     protected override string QuoteIdentifier(string identifier) => $"`{identifier}`";
-
 }

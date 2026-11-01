@@ -40,9 +40,11 @@ public sealed class ViewQuery
             .Select(group => group.Key)
             .ToArray();
         if (duplicateAliases.Length > 0)
+        {
             throw new ArgumentException(
                 $"View projection aliases must be unique: {string.Join(", ", duplicateAliases)}.",
                 nameof(projections));
+        }
 
         Projections = Array.AsReadOnly(projections.ToArray());
     }

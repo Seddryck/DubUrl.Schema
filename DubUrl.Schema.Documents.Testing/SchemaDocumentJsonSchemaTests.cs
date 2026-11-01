@@ -81,8 +81,10 @@ public class SchemaDocumentJsonSchemaTests
                 Assert.That(schema.GetProperty("additionalProperties").GetBoolean(), Is.False,
                     $"Unknown-property policy for {type.Name}");
                 foreach (var property in schema.GetProperty("properties").EnumerateObject())
+                {
                     Assert.That(property.Value.TryGetProperty("description", out _), Is.True,
                         $"Missing description for {type.Name}.{property.Name}");
+                }
             }
         });
     }

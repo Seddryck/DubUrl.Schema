@@ -7,7 +7,8 @@ using NUnit.Framework;
 
 namespace DubUrl.Schema.Oracle.QA;
 
-[TestFixture, Category("Oracle")]
+[TestFixture]
+[Category("Oracle")]
 public sealed partial class OracleBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()

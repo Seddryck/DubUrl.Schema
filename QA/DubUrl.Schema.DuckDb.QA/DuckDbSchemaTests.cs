@@ -6,22 +6,27 @@ using DubUrl.Querying.Dialects;
 using DuckDB.NET.Data;
 using NUnit.Framework;
 namespace DubUrl.Provider.DuckDb.QA;
-[TestFixture, NonParallelizable]
+
+[TestFixture]
+[NonParallelizable]
 public sealed class DuckDbSchemaTests
 {
     private string path = null!;
-    [SetUp] public void SetUp()
+    [SetUp]
+    public void SetUp()
     {
         DbProviderFactories.RegisterFactory("DuckDB.NET.Data", DuckDBClientFactory.Instance);
         path = Path.Combine(Path.GetTempPath(), "duburl-schema-" + Guid.NewGuid().ToString("N") + ".duckdb");
     }
-    [TearDown] public void CleanUp()
+    [TearDown]
+    public void CleanUp()
     {
         if (File.Exists(path)) File.Delete(path);
         if (File.Exists(path + ".wal")) File.Delete(path + ".wal");
     }
     private string ConnectionUrl => "duckdb:///" + path.Replace('\\', '/');
-    [Test, Category("Schema")]
+    [Test]
+    [Category("Schema")]
     public void CreateTable()
     {
         var connection = new ConnectionUrl(ConnectionUrl);
@@ -33,7 +38,8 @@ public sealed class DuckDbSchemaTests
         AssertTableEmpty(connection, "Sales");
     }
 
-    [Test, Category("Schema")]
+    [Test]
+    [Category("Schema")]
     public void CreateIndex()
     {
         var connection = new ConnectionUrl(ConnectionUrl);

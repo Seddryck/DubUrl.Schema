@@ -27,8 +27,10 @@ public sealed class SchemaDocumentWriter
     private static void OmitEmptyCollections(JsonTypeInfo info)
     {
         foreach (var property in info.Properties)
+        {
             if (typeof(System.Collections.ICollection).IsAssignableFrom(property.PropertyType))
                 property.ShouldSerialize = (_, value) => value is System.Collections.ICollection { Count: > 0 };
+        }
     }
 
     public void Write(Stream stream, ISchemaDocument document, SchemaDocumentFormat format)

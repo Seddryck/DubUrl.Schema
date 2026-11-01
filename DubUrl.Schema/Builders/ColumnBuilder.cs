@@ -62,7 +62,6 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
         return this;
     }
     IColumnConstraintBuilder IColumnConstraintBuilder.WithNullable(bool value)
-
     {
         if (value)
             Constraints.AddNullable();
@@ -72,7 +71,6 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     }
 
     IColumnConstraintBuilder IColumnConstraintBuilder.WithNullable()
-
     {
         Constraints.AddNullable();
         return this;

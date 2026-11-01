@@ -13,6 +13,7 @@ public class ConstraintCollection : List<IConstraint>
     public ConstraintCollection(IConstraint[] constraints)
         => AddRange(constraints);
 
-    public T? Get<T>() where T : Constraint
+    public T? Get<T>()
+        where T : Constraint
         => this.OfType<T>().FirstOrDefault();
 }

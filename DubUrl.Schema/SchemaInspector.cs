@@ -126,9 +126,13 @@ public sealed class SchemaInspector
     {
         var queue = new Queue<MetadataTable>(selected.Values);
         while (queue.TryDequeue(out var table))
+        {
             foreach (var key in table.ForeignKeys)
+            {
                 if (!selected.ContainsKey(key.Target) && all.TryGetValue(key.Target, out var target))
                 { selected.Add(target.Identity, target); queue.Enqueue(target); }
+            }
+        }
     }
 
     private static Table MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected, List<DiscoveryDiagnostic> diagnostics)
@@ -144,8 +148,11 @@ public sealed class SchemaInspector
             Expression(check.Left), check.Operator, Expression(check.Right), check.Name)));
         // v1 has no named table unique-constraint construct; never turn a constraint into an index.
         foreach (var unique in table.UniqueConstraints)
+        {
             diagnostics.Add(new("SDI006", SchemaFeature.UniqueConstraints, MetadataCoverage.Unrepresentable,
                 "A named table unique constraint is not representable in the schema model.", table.Identity));
+        }
+
         return new Table(Name(table.Identity), columns, constraints.ToArray(), table.Comment);
     }
 
@@ -181,10 +188,15 @@ public sealed class SchemaInspector
             if (options.Schemas.Count > 0 && !options.Schemas.Contains(view.Identity.Schema, StringComparer.Ordinal)) continue;
             if (options.Tables.Count > 0) continue; // Table filters select tables, not views.
             if (view.Source is not null && (selected.ContainsKey(view.Source) || metadata.Views.Any(candidate => candidate.Identity == view.Source)) && view.Projections is not null)
+            {
                 views.Add(new View(Name(view.Identity), new ViewQuery(Name(view.Source),
                     view.Projections.Select(expression => new ViewProjection(Expression(expression.Expression), expression.Alias)).ToArray())));
-            else diagnostics.Add(new("SDI008", SchemaFeature.Views, MetadataCoverage.Unrepresentable,
+            }
+            else
+            {
+                diagnostics.Add(new("SDI008", SchemaFeature.Views, MetadataCoverage.Unrepresentable,
                 "The view definition cannot be represented by a portable projection query.", view.Identity));
+            }
         }
         return views;
     }
@@ -192,10 +204,14 @@ public sealed class SchemaInspector
     private static void ApplyDiagnosticCoverage(Dictionary<SchemaFeature, MetadataCoverage> coverage, List<DiscoveryDiagnostic> diagnostics)
     {
         foreach (var group in diagnostics.GroupBy(item => item.Feature))
+        {
             if (coverage.ContainsKey(group.Key))
+            {
                 coverage[group.Key] = group.Any(item => item.Coverage == MetadataCoverage.Inaccessible)
                     ? MetadataCoverage.Inaccessible : group.Any(item => item.Coverage == MetadataCoverage.Unrepresentable)
                         ? MetadataCoverage.Unrepresentable : group.First().Coverage;
+            }
+        }
     }
 
     private static NativeDatabaseType? MapNativeType(MetadataColumn column)

@@ -17,9 +17,12 @@ public sealed partial class NativeDatabaseType
     public NativeDatabaseType(string name, params Type[] dialects)
     {
         if (string.IsNullOrWhiteSpace(name) || !NativeTypeNamePattern().IsMatch(name))
+        {
             throw new ArgumentException(
                 "Native type names may contain only letters, digits, underscores, and single spaces between identifier parts.",
                 nameof(name));
+        }
+
         if (dialects.Any(type => !typeof(IDialect).IsAssignableFrom(type)))
             throw new ArgumentException("Every native type scope must be an IDialect type.", nameof(dialects));
         Name = name;

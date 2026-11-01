@@ -7,7 +7,6 @@ using DubUrl.Schema.Constraints;
 
 namespace DubUrl.Schema.Builders;
 
-
 public interface IConstraintBuilder
 {
     Constraint Build();

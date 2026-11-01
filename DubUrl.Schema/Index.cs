@@ -40,9 +40,11 @@ public class Index
             .Select(group => group.Key)
             .ToArray();
         if (duplicateNames.Length > 0)
+        {
             throw new ArgumentException(
                 $"Index column names must be unique: {string.Join(", ", duplicateNames)}.",
                 nameof(columns));
+        }
 
         Name = identity.Name;
         TableName = tableIdentity.Name;

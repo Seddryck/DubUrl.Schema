@@ -60,16 +60,20 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (primaryKeyConstraint is not null )
         {
             foreach (var column in primaryKeyConstraint.Columns)
+            {
                 if (!columns.Any(c => c.Name == column.Key))
                     throw new InvalidOperationException($"Primary key column '{column.Key}' does not exist in table '{Name}'.");
+            }
         }
 
         foreach (var foreignKey in constraints.OfType<ForeignKeyConstraint>())
         {
             var missingColumns = foreignKey.SourceColumns.Where(name => !columns.Any(column => column.Name == name)).ToArray();
             if (missingColumns.Length > 0)
+            {
                 throw new InvalidOperationException(
                     $"Foreign key '{foreignKey.Name}' references missing source column(s) {string.Join(", ", missingColumns)} in table '{Name}'.");
+            }
         }
 
         var duplicateConstraintNames = constraints.Where(constraint => constraint.Name is not null)

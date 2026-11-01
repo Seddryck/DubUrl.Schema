@@ -62,9 +62,12 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
         var columnsByName = columns.ToDictionary(column => column.Name, StringComparer.Ordinal);
         var constraints = new List<Constraint>();
         if (document.PrimaryKey is not null)
+        {
             constraints.Add(new PrimaryKeyConstraint(
                 document.PrimaryKey.Columns.Select(name => columnsByName[name]).ToArray(),
                 document.PrimaryKey.Name));
+        }
+
         constraints.AddRange(document.Checks.Select(MapCheck));
         constraints.AddRange(document.ForeignKeys.Select(foreignKey => new ForeignKeyConstraint(
             foreignKey.Name!,
@@ -112,11 +115,14 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
         if (document.Identity is not null)
             return new IdentityColumnGeneration(document.Identity.Seed, document.Identity.Increment);
         if (document.Generated is not null)
+        {
             return new GeneratedColumnGeneration(
                 MapExpression(document.Generated.Expression),
                 document.Generated.Storage == "virtual"
                     ? GeneratedColumnStorage.Virtual
                     : GeneratedColumnStorage.Stored);
+        }
+
         return null;
     }
 

@@ -36,8 +36,11 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
     {
         ArgumentNullException.ThrowIfNull(document);
         if (document is not SchemaDocument versionOne)
+        {
             return [Error(SchemaDocumentDiagnosticCodes.UnsupportedVersion,
                 $"Schema document version {document.Version} is not supported.", "version")];
+        }
+
         return Validate(versionOne);
     }
 
@@ -46,8 +49,10 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         ArgumentNullException.ThrowIfNull(document);
         var diagnostics = new List<SchemaDocumentDiagnostic>();
         if (document.Version != SchemaDocument.SupportedVersion)
+        {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.UnsupportedVersion,
                 $"Schema document version {document.Version} is not supported.", "version"));
+        }
 
         var tables = document.Tables ?? [];
         var tableLookup = new Dictionary<string, (TableDocument Table, int Index)>(StringComparer.Ordinal);
@@ -57,16 +62,24 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
             var path = $"tables[{tableIndex}]";
             var key = ValidateIdentity(table?.Identity, $"{path}.identity", diagnostics);
             if (key is not null && !tableLookup.TryAdd(key, (table!, tableIndex)))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateTable,
                     $"Table '{FormatIdentity(table!.Identity)}' is declared more than once.", $"{path}.identity"));
+            }
         }
 
         for (var tableIndex = 0; tableIndex < tables.Count; tableIndex++)
+        {
             if (tables[tableIndex] is { } table)
+            {
                 ValidateTable(table, tableIndex, tableLookup, diagnostics);
+            }
             else
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A table declaration cannot be null.", $"tables[{tableIndex}]"));
+            }
+        }
 
         ValidateIndexes(document.Indexes ?? [], tableLookup, diagnostics);
         ValidateViews(document.Views ?? [], tableLookup, diagnostics);
@@ -142,8 +155,10 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         if (expression.Kind == "column" && !string.IsNullOrWhiteSpace(expression.Name))
             yield return expression.Name;
         foreach (var argument in expression.Arguments ?? [])
+        {
             foreach (var reference in ExpressionReferences(argument))
                 yield return reference;
+        }
     }
 
     private static void ValidateViewCycles(
@@ -208,11 +223,15 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
                 continue;
             }
             if (string.IsNullOrWhiteSpace(column.Name))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A column name is required.", $"{columnPath}.name"));
+            }
             else if (!columnLookup.TryAdd(column.Name, column))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateColumn,
                     $"Column '{column.Name}' is declared more than once.", $"{columnPath}.name"));
+            }
 
             ValidateColumn(column, columnPath, columns, diagnostics);
         }
@@ -238,15 +257,22 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         ICollection<SchemaDocumentDiagnostic> diagnostics)
     {
         if (string.IsNullOrWhiteSpace(nativeType.Name))
+        {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                 "A native type name is required.", $"{path}.name"));
+        }
         else if (!NativeTypeNamePattern().IsMatch(nativeType.Name))
+        {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidNativeType,
                 "Native type names may contain only letters, digits, underscores, and single spaces between identifier parts.",
                 $"{path}.name"));
+        }
+
         if (nativeType.Fallback is not ("error" or "logical-type"))
+        {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidNativeType,
                 "Native type fallback must be 'error' or 'logical-type'.", $"{path}.fallback"));
+        }
     }
 
     private static void ValidatePrimaryKey(
@@ -266,9 +292,13 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         }
         ValidateColumnReferences(primaryKey.Columns, path, columns, diagnostics, "primary key");
         for (var index = 0; index < primaryKey.Columns.Count; index++)
+        {
             if (columns.TryGetValue(primaryKey.Columns[index] ?? string.Empty, out var column) && column.Nullable is true)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                     $"Primary-key column '{primaryKey.Columns[index]}' cannot be nullable.", $"{path}[{index}]"));
+            }
+        }
     }
 
     private void ValidateForeignKeys(
@@ -357,23 +387,34 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         {
             case "column":
                 if (string.IsNullOrWhiteSpace(expression.Name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                         "A column expression requires a name.", $"{path}.name"));
+                }
                 else if (!columns.Any(column => column?.Name == expression.Name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
                         $"Expression references missing column '{expression.Name}'.", $"{path}.name"));
+                }
+
                 break;
             case "value":
                 ValidateLiteral(expression.Value, $"{path}.value", diagnostics, valueConverter);
                 break;
             case "function":
                 if (string.IsNullOrWhiteSpace(expression.Function))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                         "A function expression requires a function identifier.", $"{path}.function"));
+                }
+
                 var arguments = expression.Arguments ?? [];
                 for (var index = 0; index < arguments.Count; index++)
+                {
                     ValidateExpression(arguments[index], $"{path}.arguments[{index}]", columns, diagnostics,
                         valueConverter);
+                }
+
                 break;
             default:
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidExpression,
@@ -406,11 +447,13 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         if (expression is null)
             return;
         var supported = expression.Kind == "column"
-                        || expression is { Kind: "function", Arguments.Count: 1 }
-                        && expression.Arguments[0].Kind == "column";
+                        || (expression is { Kind: "function", Arguments.Count: 1 }
+                        && expression.Arguments[0].Kind == "column");
         if (!supported)
+        {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidExpression,
                 "Membership and regex checks require a column or a single-column function expression.", path));
+        }
     }
 
     private static void ValidateColumnReferences(
@@ -425,16 +468,23 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         {
             var name = references[index];
             if (string.IsNullOrWhiteSpace(name))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     $"A {owner} column name is required.", $"{path}[{index}]"));
+            }
             else
             {
                 if (!names.Add(name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
                         $"Column '{name}' is referenced more than once by the {owner}.", $"{path}[{index}]"));
+                }
+
                 if (!columns.ContainsKey(name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
                         $"The {owner} references missing column '{name}'.", $"{path}[{index}]"));
+                }
             }
         }
     }

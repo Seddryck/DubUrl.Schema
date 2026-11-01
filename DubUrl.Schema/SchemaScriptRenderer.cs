@@ -20,6 +20,9 @@ public class SchemaScriptRenderer
     private NativeTypeRegistry NativeTypes { get; }
     private bool DropExisting { get; }
     /// <summary>Whether descriptions can be rendered by this implementation.</summary>
+    /// <value>
+    /// Whether descriptions can be rendered by this implementation.
+    /// </value>
     public bool SupportsComments { get; }
     public bool EngineSupportsComments => (Dialect.Capabilities ?? DialectCapabilities.Default).SupportsComments;
 
@@ -114,16 +117,18 @@ public class SchemaScriptRenderer
     {
         // Validate both endpoints, including metadata for pre-existing reference tables.
         foreach (var table in schema.Tables.Values)
-        foreach (var key in table.Constraints.OfType<Constraints.ForeignKeyConstraint>())
         {
-            var source = tables.Single(item => item.Identity == table.Identity);
-            foreach (var name in key.SourceColumns)
-                source.Columns.Single(column => column.Name == name).IsKey = true;
-            var target = schema.Tables.TryGetValue(key.TargetTable.Key, out var created)
-                ? created : schema.ExternalTables[key.TargetTable.Key];
-            foreach (var name in key.TargetColumns)
+            foreach (var key in table.Constraints.OfType<Constraints.ForeignKeyConstraint>())
             {
-                ValidateKeyColumn(target, name);
+                var source = tables.Single(item => item.Identity == table.Identity);
+                foreach (var name in key.SourceColumns)
+                    source.Columns.Single(column => column.Name == name).IsKey = true;
+                var target = schema.Tables.TryGetValue(key.TargetTable.Key, out var created)
+                    ? created : schema.ExternalTables[key.TargetTable.Key];
+                foreach (var name in key.TargetColumns)
+                {
+                    ValidateKeyColumn(target, name);
+                }
             }
         }
     }
@@ -141,8 +146,10 @@ public class SchemaScriptRenderer
     private static void MarkUniqueIndexColumns(Schema schema, TableViewModel[] tables)
     {
         foreach (var index in schema.Indexes.Values.Where(index => index.IsUnique))
-        foreach (var name in index.Columns.Keys)
-            tables.Single(table => table.Identity == index.TableIdentity).Columns.Single(column => column.Name == name).IsKey = true;
+        {
+            foreach (var name in index.Columns.Keys)
+                tables.Single(table => table.Identity == index.TableIdentity).Columns.Single(column => column.Name == name).IsKey = true;
+        }
     }
 
     protected internal string Render(object model)

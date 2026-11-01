@@ -7,7 +7,8 @@ using NUnit.Framework;
 
 namespace DubUrl.Schema.MySql.QA;
 
-[TestFixture, Category("MySql")]
+[TestFixture]
+[Category("MySql")]
 public sealed partial class MySqlBaselineTests : ProviderContract
 {
     protected override DbConnection CreateConnection()

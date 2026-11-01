@@ -638,7 +638,6 @@ public class SchemaScriptRendererTests
             ));
     }
 
-
     [Test]
     public void Render_TableWithIndexes_ExpectedResult()
     {
@@ -1027,10 +1026,12 @@ public class SchemaScriptRendererTests
         Assert.Multiple(() =>
         {
             foreach (var dialect in new[] { TSql, Pgsql, MySql, Sqlite, DuckDb, CockRoach })
+            {
                 Assert.That(
                     () => new SchemaScriptRenderer(dialect).Render(schema),
                     Throws.Nothing,
                     dialect.GetType().Name);
+            }
         });
     }
 

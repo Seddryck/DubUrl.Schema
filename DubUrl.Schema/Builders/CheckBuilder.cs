@@ -61,15 +61,21 @@ public class CheckBuilder : ICheckBuilder, ICheckBuildable
     Constraint ICheckBuildable.Build()
     {
         if (Pattern is not null)
+        {
             return new RegexCheckConstraint(
                 Left?.Build() ?? throw new InvalidOperationException("A regex expression must be provided."),
                 Pattern,
                 RegexNullBehavior);
+        }
+
         if (Values is not null)
+        {
             return new MembershipCheckConstraint(
                 Left?.Build() ?? throw new InvalidOperationException("A membership expression must be provided."),
                 Values,
                 NullBehavior);
+        }
+
         if (Left is null || Operator is null || Right is null)
             throw new InvalidOperationException();
         return new CheckConstraint(Left.Build(), Operator, Right.Build());

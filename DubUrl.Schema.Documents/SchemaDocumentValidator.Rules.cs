@@ -56,11 +56,15 @@ public sealed partial class SchemaDocumentValidator
         {
             var column = context.Column;
             if (string.IsNullOrWhiteSpace(column.Type))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A logical column type is required.", $"{context.Path}.type"));
+            }
             else if (!SchemaDocumentTypes.TryGetDbType(column.Type, out _))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.UnsupportedType,
                     $"Logical column type '{column.Type}' is not supported.", $"{context.Path}.type"));
+            }
         }
     }
 
@@ -73,11 +77,16 @@ public sealed partial class SchemaDocumentValidator
             var column = context.Column;
             var hasType = SchemaDocumentTypes.TryGetDbType(column.Type, out var type);
             if (column.Length is <= 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
                     "Column length must be greater than zero.", $"{context.Path}.length"));
+            }
+
             if (column.Length is not null && hasType && !SchemaDocumentTypes.SupportsLength(type))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                     $"Logical type '{column.Type}' does not support a length facet.", $"{context.Path}.length"));
+            }
         }
     }
 
@@ -90,19 +99,30 @@ public sealed partial class SchemaDocumentValidator
             var column = context.Column;
             var hasType = SchemaDocumentTypes.TryGetDbType(column.Type, out var type);
             if (column.Precision is 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
                     "Column precision must be greater than zero.", $"{context.Path}.precision"));
+            }
+
             if (column.Scale is not null && column.Precision is null)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
                     "Column scale requires a precision.", $"{context.Path}.scale"));
+            }
+
             if (column.Scale > column.Precision)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
                     "Column scale cannot exceed its precision.", $"{context.Path}.scale"));
+            }
+
             if ((column.Precision is not null || column.Scale is not null)
                 && hasType && !SchemaDocumentTypes.SupportsPrecision(type))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                     $"Logical type '{column.Type}' does not support precision or scale facets.",
                     $"{context.Path}.precision"));
+            }
         }
     }
 
@@ -114,8 +134,10 @@ public sealed partial class SchemaDocumentValidator
         {
             var column = context.Column;
             if (column.Length is not null && (column.Precision is not null || column.Scale is not null))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
                     "Length and precision/scale facets are mutually exclusive.", context.Path));
+            }
         }
     }
 
@@ -128,11 +150,16 @@ public sealed partial class SchemaDocumentValidator
             var column = context.Column;
             var generationCount = (column.Identity is null ? 0 : 1) + (column.Generated is null ? 0 : 1);
             if (generationCount > 1)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
                     "Identity and generated column definitions are mutually exclusive.", context.Path));
+            }
+
             if (column.Default is not null && generationCount > 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
                     "A generated column cannot also define a default value.", context.Path));
+            }
         }
     }
 
@@ -146,13 +173,18 @@ public sealed partial class SchemaDocumentValidator
             if (column.Identity is not null)
             {
                 if (column.Identity.Increment == 0)
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
                         "Identity increment cannot be zero.", $"{context.Path}.identity.increment"));
+                }
+
                 if (SchemaDocumentTypes.TryGetDbType(column.Type, out var type)
                     && !SchemaDocumentTypes.SupportsIdentity(type))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                         $"Logical type '{column.Type}' cannot be used for an identity column.",
                         $"{context.Path}.identity"));
+                }
             }
         }
     }
@@ -167,9 +199,12 @@ public sealed partial class SchemaDocumentValidator
             if (column.Generated is not null)
             {
                 if (column.Generated.Storage is not ("stored" or "virtual"))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
                         "Generated column storage must be 'stored' or 'virtual'.",
                         $"{context.Path}.generated.storage"));
+                }
+
                 ValidateExpression(column.Generated.Expression, $"{context.Path}.generated.expression",
                     context.Columns, diagnostics, context.ValueConverter);
             }
@@ -188,9 +223,11 @@ public sealed partial class SchemaDocumentValidator
             ValidateLiteral(column.Default, $"{context.Path}.default", diagnostics, context.ValueConverter);
             if (column.Default.Type is not null && column.Default.Type != "null" && column.Type is not null
                 && column.Default.Type != column.Type)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                     $"Default literal type '{column.Default.Type}' does not match column type '{column.Type}'.",
                     $"{context.Path}.default.type"));
+            }
         }
     }
 
@@ -212,8 +249,10 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ForeignKeyValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             if (string.IsNullOrWhiteSpace(context.ForeignKey.Name))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A foreign-key name is required.", $"{context.Path}.name"));
+            }
         }
     }
 
@@ -225,11 +264,15 @@ public sealed partial class SchemaDocumentValidator
         {
             var columns = context.ForeignKey.SourceColumns;
             if (columns is null || columns.Count == 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A foreign key must reference at least one source column.", $"{context.Path}.sourceColumns"));
+            }
             else
+            {
                 ValidateColumnReferences(columns, $"{context.Path}.sourceColumns", context.SourceColumns,
                     diagnostics, "foreign key");
+            }
         }
     }
 
@@ -248,8 +291,10 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ForeignKeyValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             if ((context.ForeignKey.TargetColumns?.Count ?? 0) == 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A foreign key must reference at least one target column.", $"{context.Path}.targetColumns"));
+            }
         }
     }
 
@@ -260,8 +305,10 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ForeignKeyValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             if ((context.ForeignKey.SourceColumns?.Count ?? 0) != (context.ForeignKey.TargetColumns?.Count ?? 0))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidForeignKey,
                     "Foreign-key source and target column counts must match.", context.Path));
+            }
         }
     }
 
@@ -296,9 +343,11 @@ public sealed partial class SchemaDocumentValidator
         {
             var identity = ValidateIdentity(context.Index.Identity, $"{context.Path}.identity", diagnostics);
             if (identity is not null && !context.DeclaredIdentities.Add(identity))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateIndex,
                     $"Index '{FormatIdentity(context.Index.Identity)}' is declared more than once.",
                     $"{context.Path}.identity"));
+            }
         }
     }
 
@@ -310,9 +359,11 @@ public sealed partial class SchemaDocumentValidator
         {
             var tableIdentity = ValidateIdentity(context.Index.Table, $"{context.Path}.table", diagnostics);
             if (tableIdentity is not null && context.Table is null)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
                     $"Index references missing table '{FormatIdentity(context.Index.Table)}'.",
                     $"{context.Path}.table"));
+            }
         }
     }
 
@@ -324,8 +375,11 @@ public sealed partial class SchemaDocumentValidator
         {
             var columns = context.Index.Columns ?? [];
             if (columns.Count == 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidIndex,
                     "An index must reference at least one column.", $"{context.Path}.columns"));
+            }
+
             var tableColumns = context.Table is null ? null : ToColumnLookup(context.Table.Columns ?? []);
             var names = new HashSet<string>(StringComparer.Ordinal);
             for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
@@ -339,14 +393,22 @@ public sealed partial class SchemaDocumentValidator
                     continue;
                 }
                 if (!names.Add(column.Name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
                         $"Index column '{column.Name}' is referenced more than once.", $"{columnPath}.name"));
+                }
+
                 if (tableColumns is not null && !tableColumns.ContainsKey(column.Name))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
                         $"Index references missing column '{column.Name}'.", $"{columnPath}.name"));
+                }
+
                 if (column.Direction is not null && column.Direction is not ("ascending" or "descending"))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidIndex,
                         "Index column direction must be 'ascending' or 'descending'.", $"{columnPath}.direction"));
+                }
             }
         }
     }
@@ -363,13 +425,18 @@ public sealed partial class SchemaDocumentValidator
             if (identity is null)
                 return;
             if (context.IsDuplicate)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateView,
                     $"View '{FormatIdentity(context.View.Identity)}' is declared more than once.",
                     $"{context.Path}.identity"));
+            }
+
             if (context.ConflictsWithTable)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateView,
                     $"Relation '{FormatIdentity(context.View.Identity)}' is declared as both a table and a view.",
                     $"{context.Path}.identity"));
+            }
         }
     }
 
@@ -380,8 +447,10 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ViewValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             if (context.View.Query is null)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A view query is required.", $"{context.Path}.query"));
+            }
         }
     }
 
@@ -395,9 +464,11 @@ public sealed partial class SchemaDocumentValidator
                 return;
             var sourceKey = ValidateIdentity(context.View.Query.Source, $"{context.Path}.query.source", diagnostics);
             if (sourceKey is not null && !context.HasResolvedSource)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MissingReference,
                     $"View references missing source relation '{FormatIdentity(context.View.Query.Source)}'.",
                     $"{context.Path}.query.source"));
+            }
         }
     }
 
@@ -411,8 +482,10 @@ public sealed partial class SchemaDocumentValidator
                 return;
             var projections = context.View.Query.Projections ?? [];
             if (projections.Count == 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidView,
                     "A view query must contain at least one projection.", $"{context.Path}.query.projections"));
+            }
 
             var aliases = new HashSet<string>(StringComparer.Ordinal);
             for (var projectionIndex = 0; projectionIndex < projections.Count; projectionIndex++)
@@ -426,12 +499,16 @@ public sealed partial class SchemaDocumentValidator
                     continue;
                 }
                 if (projection.Alias is not null && string.IsNullOrWhiteSpace(projection.Alias))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidView,
                         "A projection alias cannot be empty or whitespace.", $"{projectionPath}.alias"));
+                }
                 else if (projection.Alias is not null && !aliases.Add(projection.Alias))
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
                         $"Projection alias '{projection.Alias}' is declared more than once.",
                         $"{projectionPath}.alias"));
+                }
 
                 var validationColumns = context.HasResolvedSource
                     ? context.SourceColumns
@@ -458,8 +535,10 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(CheckValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             if (context.Check.Kind is not ("comparison" or "membership" or "regex"))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "Check kind must be 'comparison', 'membership', or 'regex'.", $"{context.Path}.kind"));
+            }
         }
     }
 
@@ -476,9 +555,11 @@ public sealed partial class SchemaDocumentValidator
             ValidateExpression(context.Check.Right, $"{context.Path}.right", context.Columns, diagnostics,
                 context.ValueConverter);
             if (context.Check.Operator is null || !ComparisonOperators.Contains(context.Check.Operator))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "Comparison operator must be one of =, <>, !=, <, <=, >, or >=.",
                     $"{context.Path}.operator"));
+            }
         }
     }
 
@@ -495,28 +576,40 @@ public sealed partial class SchemaDocumentValidator
                 context.ValueConverter);
             ValidatePredicateExpression(check.Expression, $"{context.Path}.expression", diagnostics);
             if (check.Values is null || check.Values.Count == 0)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "A membership check requires at least one value.", $"{context.Path}.values"));
+            }
             else
             {
                 for (var valueIndex = 0; valueIndex < check.Values.Count; valueIndex++)
+                {
                     ValidateLiteral(check.Values[valueIndex], $"{context.Path}.values[{valueIndex}]", diagnostics,
                         context.ValueConverter);
+                }
+
                 var types = check.Values.Where(value => value?.Type != "null")
                     .Select(value => value?.Type).Distinct(StringComparer.Ordinal).ToArray();
                 if (types.Length > 1)
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                         "Membership values must use the same literal type.", $"{context.Path}.values"));
+                }
+
                 if (check.Values.Any(value => value?.Type == "null") && check.NullBehavior != "match-null")
+                {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                         "Membership checks containing null require nullBehavior 'match-null'.",
                         $"{context.Path}.nullBehavior"));
+                }
             }
             if (check.NullBehavior is not null
                 && check.NullBehavior is not ("sql-three-valued-logic" or "match-null"))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "Membership null behavior must be 'sql-three-valued-logic' or 'match-null'.",
                     $"{context.Path}.nullBehavior"));
+            }
         }
     }
 
@@ -533,12 +626,17 @@ public sealed partial class SchemaDocumentValidator
                 context.ValueConverter);
             ValidatePredicateExpression(check.Expression, $"{context.Path}.expression", diagnostics);
             if (check.Pattern is null)
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                     "A regex pattern is required.", $"{context.Path}.pattern"));
+            }
+
             if (check.NullBehavior is not null && check.NullBehavior is not ("allow-null" or "reject-null"))
+            {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "Regex null behavior must be 'allow-null' or 'reject-null'.",
                     $"{context.Path}.nullBehavior"));
+            }
         }
     }
 }

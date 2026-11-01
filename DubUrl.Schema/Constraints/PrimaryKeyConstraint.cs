@@ -23,9 +23,11 @@ public class PrimaryKeyConstraint : Constraint
             .Select(group => group.Key)
             .ToArray();
         if (duplicateNames.Length > 0)
+        {
             throw new ArgumentException(
                 $"Primary key column names must be unique: {string.Join(", ", duplicateNames)}.",
                 nameof(columns));
+        }
 
         Columns = OrderedImmutableDictionary<string, Column>.From(
                     columns.Select(c => new KeyValuePair<string, Column>(c.Name, c)));

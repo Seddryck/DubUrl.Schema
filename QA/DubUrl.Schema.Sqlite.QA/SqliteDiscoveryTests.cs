@@ -9,7 +9,8 @@ namespace DubUrl.Provider.Sqlite.QA;
 
 public class SqliteDiscoveryTests
 {
-    [Test, Category("Discovery")]
+    [Test]
+    [Category("Discovery")]
     public async Task Discovery_RichSubsetAndUnrepresentableMetadata_AreExplicit()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
