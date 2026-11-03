@@ -18,7 +18,7 @@ public sealed partial class SingleStoreSchemaTests
         => scenario is "DiscoveryPrimaryKey" or "DiscoveryUnique" or "DiscoveryIndexes" ? new(SchemaTableStorage.Rowstore, ["b"]) : null;
     protected override Constraint[] DiscoveryUniqueConstraints(Column[] columns)
         => [new UniquenessConstraint([columns[1], columns[0]], "unique_pair"),
-            new UniquenessConstraint([columns[2], columns[0]], "unique_title")];
+            new UniquenessConstraint([columns[0]], "unique_single")];
     protected override IReadOnlyDictionary<string,FeatureExpectation> FeatureExpectations { get; } =
         new Dictionary<string,FeatureExpectation>
         {

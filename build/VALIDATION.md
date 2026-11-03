@@ -155,8 +155,8 @@ The QA commands used the local isolated Python environment for TRX validation.
 
 - `./QA/run.ps1 -Database MySql -ResultsDirectory artifacts/results/pr20-discovery/MySql`:
   62 fixture cases and all 3 MySqlIntegration cases passed, zero skipped.
-- `./QA/run.ps1 -Database SingleStore -ResultsDirectory artifacts/results/pr20-discovery/SingleStore-final`:
-  all 62 cases passed, zero skipped. The preceding full attempt passed 59 cases;
+- `./QA/run.ps1 -Database SingleStore -ResultsDirectory artifacts/results/pr20-discovery/SingleStore-single-composite`:
+  all 62 cases passed, zero skipped, including named singleton and composite UNIQUE keys sharing shard column b. The preceding full attempt passed 59 cases;
   its three fixture-assumption failures were corrected and the full suite rerun.
 - Complete SQLite and DuckDB net10.0 QA passed 72 and 66 cases respectively,
   without skips. Every report passed baseline/shared-inventory validation.
