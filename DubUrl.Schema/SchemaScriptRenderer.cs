@@ -107,20 +107,7 @@ public class SchemaScriptRenderer
                 Add(new DropTablesIfExistsRenderer(Dialect), new { model = new { TablesToDrop = new[] { table } } }, SchemaSqlOperation.DropTable, table.Identity);
         }
 
-        var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting, false);
-        foreach (var table in tables)
-        {
-            if (provider is ISequenceIdentitySqlRenderer sequence)
-            {
-                foreach (var column in table.Columns.Where(column => column.Generation is IdentityColumnGeneration))
-                {
-                    var identity = (IdentityColumnGeneration)column.Generation!;
-                    var context = new IdentityColumnContext(table.Name, column.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog);
-                    commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
-                }
-            }
-            Add(create, new { model = new { Tables = new[] { table } } }, SchemaSqlOperation.CreateTable, table.Identity);
-        }
+        AddTableCommands(commands, tables);
         var foreignKeys = new ForeignKeyRenderer(Dialect);
         foreach (var table in tables.Where(table => !table.RenderForeignKeysInline))
         {
@@ -132,21 +119,7 @@ public class SchemaScriptRenderer
         }
 
         if (SupportsComments)
-        {
-            foreach (var table in tables)
-            {
-                var name = new SchemaSqlObjectName(table.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog);
-                void Comment(string? column, string? description)
-                {
-                    if (string.IsNullOrWhiteSpace(description)) return;
-                    var sql = provider.RenderComment(Dialect, name, column, description);
-                    if (!string.IsNullOrWhiteSpace(sql))
-                        commands.Add(new(sql, SchemaSqlOperation.Comment, table.Identity + (column is null ? "" : "." + column)));
-                }
-                Comment(null, table.Description);
-                foreach (var column in table.Columns) Comment(column.Name, column.Description);
-            }
-        }
+            AddCommentCommands(commands, tables);
         foreach (var index in indexes)
             Add(new CreateIndexRenderer(Dialect), new { model = new { Indexes = new[] { index } } }, SchemaSqlOperation.CreateIndex, index.Identity);
         foreach (var view in views)
@@ -154,6 +127,41 @@ public class SchemaScriptRenderer
 
         // Snapshot the entire plan: rendering/validation failures must occur before execution begins.
         return Array.AsReadOnly(provider.PlanCommands(Dialect, commands.AsReadOnly()).ToArray());
+    }
+
+    private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)
+    {
+        var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting, false);
+        foreach (var table in tables)
+        {
+            if (Dialect.SchemaSqlRenderer is ISequenceIdentitySqlRenderer sequence)
+            {
+                foreach (var column in table.Columns.Where(column => column.Generation is IdentityColumnGeneration))
+                {
+                    var identity = (IdentityColumnGeneration)column.Generation!;
+                    var context = new IdentityColumnContext(table.Name, column.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog);
+                    commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
+                }
+            }
+            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } } }), SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+        }
+    }
+
+    private void AddCommentCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)
+    {
+        void Add(object item, string name)
+        {
+            var sql = CommentRenderer.RenderComment(Dialect, item);
+            if (!string.IsNullOrWhiteSpace(sql))
+                commands.Add(new(sql, SchemaSqlOperation.Comment, name));
+        }
+
+        foreach (var table in tables)
+        {
+            Add(table, table.Identity.ToString());
+            foreach (var column in table.Columns)
+                Add(column, $"{table.Identity}.{column.Name}");
+        }
     }
 
     private TableViewModel[] OrderTablesToDrop(Schema schema, TableViewModel[] tables)

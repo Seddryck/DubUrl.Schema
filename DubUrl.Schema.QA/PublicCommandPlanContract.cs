@@ -74,7 +74,7 @@ public abstract partial class ProviderContract
 
     [Test]
     [Category("PublicCommandPlan")]
-    public void PublicCommandPlan_ForeignKeysAndIndexesSurviveReplacement()
+    public void PublicCommandPlan_IndexesAndSupportedForeignKeysSurviveReplacement()
     {
         using var target = CreatePublicDatabase();
         var dialect = target.Url.Dialect;
@@ -82,8 +82,10 @@ public abstract partial class ProviderContract
         var prefix = "Ck" + Guid.NewGuid().ToString("N")[..8];
         var parent = new Table(prefix + "a", [new Column("id", DbType.Int32,
             constraints: [new Constraints.PrimaryKeyConstraint()])]);
-        var child = new Table(prefix + "b", [new Column("id", DbType.Int32)],
-            [new Constraints.ForeignKeyConstraint(prefix + "fk", ["id"], parent.Identity, ["id"])]);
+        var foreignKeys = FeatureExpectations["ForeignKey"].Outcome == ExpectedOutcome.Supported;
+        var child = new Table(prefix + "b", [new Column("id", DbType.Int32)], foreignKeys
+            ? [new Constraints.ForeignKeyConstraint(prefix + "fk", ["id"], parent.Identity, ["id"])]
+            : []);
         var index = new Index(prefix + "ix", child.Name, [new IndexColumn("id")], isUnique: true);
         var schema = new Schema([parent, child], [index]);
         string Quote(Table table) => provider.RenderObjectName(dialect, null, null, null, table.Name);
