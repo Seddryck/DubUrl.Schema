@@ -33,8 +33,7 @@ internal static class TableDefinitionPlanning
             model.PortableKeys = false;
             foreach (var column in model.Columns)
             {
-                column.PrimaryKey = null;
-                column.Unique = null;
+                column.TableConsumesKeys = true;
             }
         }
     }

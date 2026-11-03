@@ -298,6 +298,51 @@ public class SchemaSqlRendererExtensionTests
         public override string RenderColumnComment(IDialect dialect, string description) => " INLINE_COMMENT";
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CombinedColumnAndTablePlans_PreserveKeyContextWithoutDuplicateEmission(bool tableKey)
+    {
+        var id = new Column("Id", DbType.Int32, constraints: tableKey ? [] : [new PrimaryKeyConstraint("PK_Order")]);
+        var table = new Table("Order", [id], tableKey ? [new PrimaryKeyConstraint(id, "PK_Order")] : []);
+        var renderer = new CombinedPlanRenderer(false);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new([table]));
+        Assert.That(renderer.ColumnContext!.PrimaryKeyColumns, Is.EqualTo(new[] { "Id" }));
+        Assert.That(sql, Does.Contain("PROVIDER_PRIMARY_KEY"));
+        Assert.That(sql, Does.Not.Contain("PRIMARY KEY"));
+    }
+
+    [Test]
+    public void CombinedColumnAndTablePlans_RejectConflictingKeyOwnership()
+    {
+        var table = new Table("Order", [new Column("Id", DbType.Int32, constraints: [new PrimaryKeyConstraint()])]);
+        Assert.Throws<NotSupportedException>(() => new SchemaScriptRenderer(new ProviderDialect(source,
+            new CombinedPlanRenderer(true))).Render(new([table])));
+    }
+
+    [Test]
+    public void CombinedColumnAndTablePlans_PreserveColumnUniquenessContext()
+    {
+        var table = new Table("Order", [new Column("Code", DbType.Int32, constraints: [new UniquenessConstraint()])]);
+        var renderer = new CombinedPlanRenderer(false);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new([table]));
+        Assert.That(renderer.ColumnContext!.Unique, Is.True);
+        Assert.That(sql, Does.Not.Contain(" UNIQUE"));
+    }
+
+    private sealed class CombinedPlanRenderer(bool claimKey) : StandardSchemaSqlRenderer, IColumnDefinitionSqlRenderer, ITableDefinitionSqlRenderer
+    {
+        public ColumnDefinitionContext? ColumnContext { get; private set; }
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+        {
+            ColumnContext = column;
+            return new(column.Type, claimKey ? ColumnDefinitionClauses.PrimaryKey : ColumnDefinitionClauses.None);
+        }
+
+        public TableDefinitionPlan RenderTableDefinition(IDialect dialect, TableDefinitionContext table)
+            => new("CREATE TABLE", ["PROVIDER_PRIMARY_KEY"]);
+        public string RenderCreateIndex(IDialect dialect, IndexDefinitionContext index) => throw new NotSupportedException();
+    }
+
     private sealed class CommentSqlRenderer : StandardSchemaSqlRenderer
     {
         public override bool SupportsCommentRendering => true;

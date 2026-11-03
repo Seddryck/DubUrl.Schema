@@ -138,6 +138,9 @@ public class CreateSchemaRenderer : RendererEngine
                     .Concat(column.RegexChecks.Select(check => RenderRegex(check, dialect))).ToArray(), column.Description);
             var plan = renderer.RenderColumnDefinition(dialect, context);
             if (plan is null) continue;
+            if (!table.PortableKeys && (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
+                || plan.Clauses.HasFlag(ColumnDefinitionClauses.Unique)))
+                throw new NotSupportedException("Column and table definition plans cannot both own primary/unique clauses.");
             if (string.IsNullOrWhiteSpace(plan.Specification))
                 throw new NotSupportedException("A column definition plan requires a SQL specification.");
             if (column.Generation is not null && !plan.Clauses.HasFlag(ColumnDefinitionClauses.Generation))

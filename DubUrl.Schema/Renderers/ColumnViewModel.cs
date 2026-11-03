@@ -10,11 +10,12 @@ namespace DubUrl.Schema.Renderers;
 
 public class ColumnViewModel
 {
+    internal bool TableConsumesKeys { get; set; }
     internal string? PlannedSpecification { get; set; }
     internal ColumnDefinitionClauses RenderedClauses { get; set; }
     public bool RenderNullability => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Nullability);
-    public bool RenderPrimaryKey => !RenderedClauses.HasFlag(ColumnDefinitionClauses.PrimaryKey);
-    public bool RenderUnique => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Unique);
+    public bool RenderPrimaryKey => !TableConsumesKeys && !RenderedClauses.HasFlag(ColumnDefinitionClauses.PrimaryKey);
+    public bool RenderUnique => !TableConsumesKeys && !RenderedClauses.HasFlag(ColumnDefinitionClauses.Unique);
     public bool RenderDefault => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Default);
     public bool RenderChecks => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Checks);
     public bool RenderComment => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Comment);

@@ -84,3 +84,43 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - The net10.0 Schema suite passed 196 tests with `TestCategory!=MySqlIntegration`, including its embedded DuckDB integration cases. The complete net10.0 Documents suite passed 127 tests. Focused `SchemaInspectorTests`, `SchemaSqlRendererExtensionTests` and `ProviderSchemaSqlRendererTests` passed 68 cases each on net8.0 and net9.0; these selections execute no databases.
 - Provider repository net10.0 checks passed 22 tests selected by `SqliteNamespaceTests`, `Discovery.SchemaInspectionTests`, `InspectionConnectionOwnershipTests` and `CatalogNamespaceTests`. Another 46 legacy Schema assertions selected by `ProviderSchemaSqlRendererTests` and `Render_CircularForeignKeysSqlite_RendersInline` passed after updating expected object quoting.
 - Not run: other providers' live QA, MySQL integration tests, full net8.0/net9.0 Schema/Documents suites, the full DubUrl test suite, package-consumer smoke tests, release/workflow tests, or database execution on net8.0/net9.0. No packages were published.
+
+## Consolidated namespace, column and table plans (issues #3, #4, #5)
+
+PR #20 contains the complete histories of Schema PRs #17 and #16. Overlapping
+index/table templates preserve namespace-aware names and both plan ownership
+contracts. Primary/unique context survives table planning; conflicting column
+and table ownership is rejected by synthetic-provider regressions.
+
+The published DubUrl 0.57.0 contains the column/table contracts but does not
+contain the namespace APIs from open DubUrl PR #1788. The consolidated Schema
+PR remains draft and pins unpublished local `0.57.1-schema-options.1` packages.
+Replace this pin with a compatible published release after #1788 merges;
+ordinary hosted CI cannot restore this local candidate, and a 0.57.0 override
+fails compilation because the namespace methods/filters do not exist there.
+
+Local validation packages were built from the clean DubUrl `fix/sqlite-namespace`
+worktree at `8134fd01` with `dotnet pack -c Release
+-p:Version=0.57.1-schema-options.1 -o <local-feed>` for Core and the ten referenced
+provider projects (including DuckDb.Native). Restore Schema using
+`dotnet restore DubUrl.Schema.sln -p:RestoreAdditionalProjectSources=<local-feed>`.
+No packages were published and no machine-wide NuGet configuration was changed.
+
+- Focused TableDefinitionTests, SchemaScriptRendererTests,
+  SchemaSqlRendererExtensionTests, ProviderSchemaSqlRendererTests,
+  SchemaInspectorTests and builder tests, excluding MySqlIntegration and
+  DuckDbIntegration: 169 passed on each of net8.0/net9.0/net10.0.
+- Complete net10.0 document suite: 128 passed, including SQLite quoted SQL.
+- Complete SQLite net10.0 QA: 72 passed without skips; both required baseline
+  and shared scenario inventory were validated. Stale check/generated/native-key
+  expectations were replaced by positive checks against the newer reader.
+- SingleStore deployment scenarios are checked separately from its still-stale
+  discovery/diagnostic scenarios. Database execution uses net10.0 only.
+- Not run for this consolidation: other database QA, the full SingleStore
+  fixture, full Schema unit suites, net8.0/net9.0 document suites, consumer
+  smoke tests, Schema packaging, release checks or publication.
+- Final SingleStore deployment subset: 39 passed without skips on net10.0;
+  TRX validated, disposable container and network removed. Discovery/diagnostic
+  scenarios were excluded and their remaining migration was not hidden.
+- Final all-framework solution build passed with zero warnings/errors;
+  analyzer verification and git diff --check passed.

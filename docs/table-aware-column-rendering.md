@@ -20,21 +20,14 @@ The legacy context-free RenderIdentity entry point still rejects this operation.
 
 This change requires the companion Core/provider implementation in DubUrl issue
 1770 ([implementation PR](https://github.com/Seddryck/DubUrl/pull/1787)).
-`DubUrlColumnDefinitionVersion` pins both DubUrl and DubUrl.Provider.Sqlite to
-`0.55.2-tableaware.2` for candidate validation; other providers remain on
-`DubUrlVersion` (0.55.1). The candidate is local, not a published release. Keep the
-Schema PR in draft until compatible Core/provider packages are published and this
-pin is replaced with their actual released version. Do not merge with this temporary
-candidate pin or publish Schema packages against it.
+The column contract is published in DubUrl 0.57.0. This consolidated PR also
+includes namespace changes from [DubUrl PR #1788](https://github.com/Seddryck/DubUrl/pull/1788),
+which are not in that release. All Core/provider packages use the same unpublished
+local `0.57.1-schema-options.1` validation candidate. Keep this PR in draft until
+that companion PR merges and compatible packages are published; replace the
+candidate pin before merging. See [combined validation](../build/VALIDATION.md).
 
-SQLite's broad SupportsIdentityColumns capability remains unchanged: older Schema
-orchestrators cannot consume this hook, and arbitrary identity seeds/increments are
-still unsupported. Release the compatible consumer before advertising capabilities
-that depend on this optional contract.
-
-To reproduce validation, pack DubUrl.Core/DubUrl.Core.csproj and
-Providers/Sqlite/DubUrl.Provider.Sqlite/DubUrl.Provider.Sqlite.csproj from the companion
-branch with `-p:Version=0.55.2-tableaware.2 -o <candidate-feed>`, then restore/build
-Schema with `-p:RestoreAdditionalProjectSources=<candidate-feed>`. No user or
-machine-wide NuGet configuration changes are required. Run database QA only with
-`-f net10.0`.
+Column plans and table plans retain separate ownership: the shared template
+suppresses clauses consumed by either plan while preserving original key context for column planning. A column plan claiming primary/unique clauses already owned by a table plan is rejected explicitly. Providers not implementing these
+optional contracts keep their existing rendering paths. Real-database QA runs
+only on .NET 10.
