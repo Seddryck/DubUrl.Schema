@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       duburl_version:
-        description: Optional published DubUrl core/provider version for compatibility testing (never publishes)
+        description: Optional DubUrl version override; defaults to latest stable (never publishes)
         type: string
         default: ''
 permissions:
@@ -36,19 +36,17 @@ jobs:
       - name: Calculate version
         id: gitversion
         uses: gittools/actions/gitversion/execute@7417b1089e2c7de93510f1901d656ddf60bb024f # v4.7.0
+      - name: Test DubUrl dependency selection
+        run: ./build/Test-DubUrlDependency.ps1
       - name: Validate version and select DubUrl dependency
         id: dependency
         env:
           CANDIDATE: ${{ inputs.duburl_version }}
           SCHEMA_VERSION: ${{ steps.gitversion.outputs.semVer }}
         run: |
-          [xml]$props = Get-Content Directory.Build.props -Raw
-          $duburl = if ($env:CANDIDATE) { $env:CANDIDATE } else {
-            ($props.Project.PropertyGroup.DubUrlVersion | Where-Object { $_ }).InnerText
-          }
-          foreach ($value in @($env:SCHEMA_VERSION, $duburl)) {
-            if ($value -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
-          }
+          Import-Module ./build/DubUrlDependency.psm1 -Force
+          if ($env:SCHEMA_VERSION -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
+          $duburl = Resolve-DubUrlVersion -Candidate $env:CANDIDATE
           "duburl=$duburl" >> $env:GITHUB_OUTPUT
       - name: Test release guards
         run: ./build/Test-ReleaseGuards.ps1
@@ -257,10 +255,10 @@ jobs:
           if ($LASTEXITCODE) { throw 'Packages differ from tested matrix binaries.' }
       - name: Test package-only consumers
         run: |
-          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.semver }}
+          dotnet restore build/smoke/Consumer.csproj -p:SchemaVersion=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
           if ($LASTEXITCODE) { throw 'Consumer restore failed.' }
           foreach ($framework in @('net8.0','net9.0','net10.0')) {
-            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.semver }}
+            dotnet run --project build/smoke/Consumer.csproj -c Release -f $framework --no-restore -p:SchemaVersion=${{ needs.version.outputs.semver }} -p:DubUrlVersion=${{ needs.version.outputs.duburl }}
             if ($LASTEXITCODE) { throw 'Consumer smoke failed.' }
           }
       - uses: actions/download-artifact@v7
