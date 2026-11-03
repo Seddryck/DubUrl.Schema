@@ -1,8 +1,9 @@
 # Provider-owned table definitions
 
-The table contracts are available in DubUrl Core/provider 0.57.0. For these
-optional contracts, keep all DubUrl/provider package versions aligned using
-`DubUrlVersion`; Schema and Schema.Documents ship together from this repository. This combined branch also needs the unpublished namespace contract from DubUrl PR #1788. It currently pins a local `0.57.1-schema-options.1` candidate and must stay in draft until a compatible release is published.
+The table contracts and coordinated namespace/column contracts are available in
+published DubUrl Core/provider 0.57.1. Keep all DubUrl/provider package versions
+aligned using `DubUrlVersion`; Schema and Schema.Documents ship together from
+this repository. No unpublished candidate feed is required.
 
 `SchemaScriptRenderer.Render(Schema)` is the orchestration entry point. Providers
 without the optional interfaces retain portable table/index SQL and their

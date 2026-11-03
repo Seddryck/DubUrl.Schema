@@ -18,16 +18,13 @@ The legacy context-free RenderIdentity entry point still rejects this operation.
 
 ## Dependency and release coordination
 
-This change requires the companion Core/provider implementation in DubUrl issue
-1770 ([implementation PR](https://github.com/Seddryck/DubUrl/pull/1787)).
-The column contract is published in DubUrl 0.57.0. This consolidated PR also
-includes namespace changes from [DubUrl PR #1788](https://github.com/Seddryck/DubUrl/pull/1788),
-which are not in that release. All Core/provider packages use the same unpublished
-local `0.57.1-schema-options.1` validation candidate. Keep this PR in draft until
-that companion PR merges and compatible packages are published; replace the
-candidate pin before merging. See [combined validation](../build/VALIDATION.md).
+All three coordinated contracts are available in published DubUrl 0.57.1,
+including [the namespace changes](https://github.com/Seddryck/DubUrl/pull/1788).
+Core and every provider use the same `DubUrlVersion`; local candidate packages
+and separate column-contract version overrides are no longer required.
 
-Column plans and table plans retain separate ownership: the shared template
-suppresses clauses consumed by either plan while preserving original key context for column planning. A column plan claiming primary/unique clauses already owned by a table plan is rejected explicitly. Providers not implementing these
-optional contracts keep their existing rendering paths. Real-database QA runs
-only on .NET 10.
+Column plans and table plans retain separate ownership. The shared template
+suppresses consumed clauses while preserving original key context for column
+planning. A column plan claiming primary/unique clauses already owned by a table
+plan is rejected explicitly. Providers without the optional contracts retain
+their existing rendering paths. Real-database QA runs only on .NET 10.

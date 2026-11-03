@@ -12,30 +12,36 @@ internal static class TableDefinitionPlanning
             var indexes = schema.Indexes.Values.Where(index => index.TableIdentity == table.Identity).ToArray();
             if (dialect.SchemaSqlRenderer is not ITableDefinitionSqlRenderer renderer)
             {
-                if (table.PhysicalOptions is not null || indexes.Any(index => index.Structure != SchemaIndexStructure.Default))
-                    throw new NotSupportedException($"Dialect '{dialect.GetType().Name}' does not support physical table/index options.");
+                ValidatePortableOptions(dialect, table, indexes);
                 continue;
             }
 
-            var context = Context(table, indexes);
-            foreach (var index in indexes)
-            {
-                if ((index.Identity.Catalog is not null && index.Identity.Catalog != table.Identity.Catalog)
-                    || (index.Identity.Database is not null && index.Identity.Database != table.Identity.Database)
-                    || (index.Identity.Schema is not null && index.Identity.Schema != table.Identity.Schema))
-                    throw new NotSupportedException("An inline index must belong to its containing table's namespace.");
-            }
-
-            var plan = renderer.RenderTableDefinition(dialect, context);
-            var model = tables.Single(item => item.Identity == table.Identity);
-            model.CreatePrefix = plan.CreatePrefix;
-            model.ProviderDefinitions = plan.Definitions.ToArray();
-            model.PortableKeys = false;
-            foreach (var column in model.Columns)
-            {
-                column.TableConsumesKeys = true;
-            }
+            foreach (var index in indexes) ValidateIndexNamespace(index.Identity, table.Identity);
+            var plan = renderer.RenderTableDefinition(dialect, Context(table, indexes));
+            ApplyPlan(tables.Single(item => item.Identity == table.Identity), plan);
         }
+    }
+
+    private static void ValidatePortableOptions(IDialect dialect, Table table, Index[] indexes)
+    {
+        if (table.PhysicalOptions is not null || indexes.Any(index => index.Structure != SchemaIndexStructure.Default))
+            throw new NotSupportedException($"Dialect '{dialect.GetType().Name}' does not support physical table/index options.");
+    }
+
+    private static void ValidateIndexNamespace(DatabaseObjectName index, DatabaseObjectName table)
+    {
+        if ((index.Catalog is not null && index.Catalog != table.Catalog)
+            || (index.Database is not null && index.Database != table.Database)
+            || (index.Schema is not null && index.Schema != table.Schema))
+            throw new NotSupportedException("An inline index must belong to its containing table's namespace.");
+    }
+
+    private static void ApplyPlan(TableViewModel model, TableDefinitionPlan plan)
+    {
+        model.CreatePrefix = plan.CreatePrefix;
+        model.ProviderDefinitions = plan.Definitions.ToArray();
+        model.PortableKeys = false;
+        foreach (var column in model.Columns) column.TableConsumesKeys = true;
     }
 
     internal static TableDefinitionContext Context(Table table, IEnumerable<Index> indexes)

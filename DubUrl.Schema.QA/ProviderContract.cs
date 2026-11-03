@@ -442,10 +442,16 @@ public abstract class ProviderContract : SchemaContract
         await DiscoverTable(scenario, basic);
     }
 
+    protected virtual bool DiscoveryIndexIsUnique => true;
+    protected virtual TablePhysicalOptions? DiscoveryPhysicalOptions(string scenario) => null;
+    protected virtual Constraint[] DiscoveryUniqueConstraints(Column[] columns)
+        => [new UniquenessConstraint([columns[1], columns[0]], Name("unique_pair")),
+            new UniquenessConstraint([columns[2]], Name("unique_title"))];
+
     private async Task DiscoverTable(string scenario, SchemaFeature[] basic)
     {
         var table = CreateDiscoveryTable(scenario);
-        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], true) } : [];
+        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], DiscoveryIndexIsUnique) } : [];
         var portable = new View(Name("portable"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("b"), "label")));
         if (!DeployDiscoveryTable(scenario, table, indexes, portable)) return;
         if (scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic")
@@ -510,13 +516,13 @@ public abstract class ProviderContract : SchemaContract
         var columns = new Column[] { a, b, Text(), new NumericColumn("amount", DbType.Decimal, 10, 2) }; Constraint[] constraints = [];
         if (scenario == "DiscoveryFacets") columns = [new Column("b", DbType.Int32, constraints: [new NotNullableConstraint()]), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)];
         if (scenario == "DiscoveryPrimaryKey") constraints = [new PrimaryKeyConstraint([a, b])];
-        if (scenario == "DiscoveryUnique") constraints = [new UniquenessConstraint([b, a], Name("unique_pair")), new UniquenessConstraint([columns[2]], Name("unique_title"))];
+        if (scenario == "DiscoveryUnique") constraints = DiscoveryUniqueConstraints(columns);
         if (scenario == "DiscoveryDefaults") columns = [a, new VarLengthColumn("title", DbType.AnsiString, 40, defaultValue: "hé"), new NumericColumn("amount", DbType.Decimal, 10, 2, defaultValue: 12.25m)];
         if (scenario == "DiscoveryIdentity") columns = [new Column("id", DbType.Int32, constraints: [new PrimaryKeyConstraint()], generation: new IdentityColumnGeneration(10, 2)), Id("payload")];
         if (scenario == "DiscoveryChecks") constraints = [new CheckConstraint(new ColumnIdentityExpression("b"), ">=", new ValueExpression(0))];
         if (scenario == "DiscoveryGeneration") columns = [a, new Column("copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ColumnIdentityExpression("b"), DiscoveryGenerationStorage))];
         if (scenario == "DiscoveryComments") columns = [Id(), Text("title", "column comment")];
-        var table = new Table(Name("discovery"), columns, constraints, scenario == "DiscoveryComments" ? "table comment" : null);
+        var table = new Table(new DatabaseObjectName(Name("discovery")), columns, constraints, scenario == "DiscoveryComments" ? "table comment" : null, DiscoveryPhysicalOptions(scenario));
         return table;
     }
 
@@ -586,7 +592,7 @@ public abstract class ProviderContract : SchemaContract
         {
             case "DiscoveryIndexes":
                 var ix = inspected.Schema.Indexes.Values.Single(i => i.Name == indexes[0].Name);
-                Assert.That(ix.IsUnique, Is.True); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
+                Assert.That(ix.IsUnique, Is.EqualTo(indexes[0].IsUnique)); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
                 Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { IndexSortDirection.Descending, IndexSortDirection.Ascending })); break;
             case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
             case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;

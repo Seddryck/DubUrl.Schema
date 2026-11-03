@@ -120,37 +120,52 @@ public class CreateSchemaRenderer : RendererEngine
             ?? table.Columns.Where(column => column.PrimaryKey is not null).Select(column => column.Name).ToArray();
         foreach (var column in table.Columns)
         {
-            var generation = column.Generation switch
-            {
-                IdentityColumnGeneration identity => new ColumnGenerationContext(true, identity.Seed, identity.Increment),
-                GeneratedColumnGeneration generated => new ColumnGenerationContext(false,
-                    Expression: RenderExpression(generated.Expression, dialect), Stored: generated.Storage == GeneratedColumnStorage.Stored),
-                _ => null
-            };
-            var identityName = table.Identity;
-            var context = new ColumnDefinitionContext(new(identityName.Name, identityName.Schema, identityName.Database, identityName.Catalog),
-                column.Name, ResolveColumnType(column, dialect, nativeTypes), primaryColumns,
-                table.PrimaryKey?.Name ?? column.PrimaryKey?.Name, table.PrimaryKey is not null,
-                column.Nullable is not null, column.NotNullable is not null, column.Unique is not null, generation,
-                column.HasDefaultValue ? dialect.Renderer.Render(column.DefaultValue, "value") : null,
-                column.Checks.Select(check => RenderCheck(check, dialect))
-                    .Concat(column.MembershipChecks.Select(check => RenderMembership(check, dialect)))
-                    .Concat(column.RegexChecks.Select(check => RenderRegex(check, dialect))).ToArray(), column.Description);
+            var context = ColumnContext(table, column, primaryColumns, dialect, nativeTypes);
             var plan = renderer.RenderColumnDefinition(dialect, context);
             if (plan is null) continue;
-            if (!table.PortableKeys && (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
-                || plan.Clauses.HasFlag(ColumnDefinitionClauses.Unique)))
-                throw new NotSupportedException("Column and table definition plans cannot both own primary/unique clauses.");
-            if (string.IsNullOrWhiteSpace(plan.Specification))
-                throw new NotSupportedException("A column definition plan requires a SQL specification.");
-            if (column.Generation is not null && !plan.Clauses.HasFlag(ColumnDefinitionClauses.Generation))
-                throw new NotSupportedException("A column definition plan must account for declared generation.");
-            if (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
-                && (primaryColumns.Length != 1 || primaryColumns[0] != column.Name))
-                throw new NotSupportedException("A column definition plan can consume only its own single-column primary key.");
+            ValidateColumnPlan(table, column, primaryColumns, plan);
             column.PlannedSpecification = plan.Specification;
             column.RenderedClauses = plan.Clauses;
         }
+    }
+
+    private static ColumnDefinitionContext ColumnContext(TableViewModel table, ColumnViewModel column,
+        string[] primaryColumns, IDialect dialect, NativeTypeRegistry nativeTypes)
+    {
+        var identity = table.Identity;
+        return new(new(identity.Name, identity.Schema, identity.Database, identity.Catalog),
+            column.Name, ResolveColumnType(column, dialect, nativeTypes), primaryColumns,
+            table.PrimaryKey?.Name ?? column.PrimaryKey?.Name, table.PrimaryKey is not null,
+            column.Nullable is not null, column.NotNullable is not null, column.Unique is not null,
+            GenerationContext(column, dialect),
+            column.HasDefaultValue ? dialect.Renderer.Render(column.DefaultValue, "value") : null,
+            column.Checks.Select(check => RenderCheck(check, dialect))
+                .Concat(column.MembershipChecks.Select(check => RenderMembership(check, dialect)))
+                .Concat(column.RegexChecks.Select(check => RenderRegex(check, dialect))).ToArray(), column.Description);
+    }
+
+    private static ColumnGenerationContext? GenerationContext(ColumnViewModel column, IDialect dialect)
+        => column.Generation switch
+        {
+            IdentityColumnGeneration identity => new(true, identity.Seed, identity.Increment),
+            GeneratedColumnGeneration generated => new(false,
+                Expression: RenderExpression(generated.Expression, dialect), Stored: generated.Storage == GeneratedColumnStorage.Stored),
+            _ => null
+        };
+
+    private static void ValidateColumnPlan(TableViewModel table, ColumnViewModel column,
+        string[] primaryColumns, ColumnDefinitionPlan plan)
+    {
+        if (!table.PortableKeys && (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
+            || plan.Clauses.HasFlag(ColumnDefinitionClauses.Unique)))
+            throw new NotSupportedException("Column and table definition plans cannot both own primary/unique clauses.");
+        if (string.IsNullOrWhiteSpace(plan.Specification))
+            throw new NotSupportedException("A column definition plan requires a SQL specification.");
+        if (column.Generation is not null && !plan.Clauses.HasFlag(ColumnDefinitionClauses.Generation))
+            throw new NotSupportedException("A column definition plan must account for declared generation.");
+        if (plan.Clauses.HasFlag(ColumnDefinitionClauses.PrimaryKey)
+            && (primaryColumns.Length != 1 || primaryColumns[0] != column.Name))
+            throw new NotSupportedException("A column definition plan can consume only its own single-column primary key.");
     }
 
     private static IdentityColumnContext IdentityContext(ColumnViewModel column)

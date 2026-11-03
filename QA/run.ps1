@@ -2,13 +2,14 @@
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
     [ValidateSet('net10.0')][string]$Framework = 'net10.0',
-    [string]$DubUrlVersion = '0.57.1-schema-options.1',
-    [string]$Version = '0.0.0'
+    [string]$DubUrlVersion = '0.57.1',
+    [string]$Version = '0.0.0',
+    [string]$ResultsDirectory
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot
 $project = Join-Path $PSScriptRoot "DubUrl.Schema.$Database.QA/DubUrl.Schema.$Database.QA.csproj"
-$results = Join-Path $root "artifacts/results/$Database/$Framework"
+$results = if ($ResultsDirectory) { [IO.Path]::GetFullPath($ResultsDirectory, $root) } else { Join-Path $root "artifacts/results/$Database/$Framework" }
 if (Test-Path $results) { throw 'Choose a clean results directory before running QA again.' }
 $compose = Join-Path $PSScriptRoot "infrastructure/$($Database.ToLowerInvariant())/compose.yaml"
 $container = Test-Path $compose

@@ -85,7 +85,7 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - Provider repository net10.0 checks passed 22 tests selected by `SqliteNamespaceTests`, `Discovery.SchemaInspectionTests`, `InspectionConnectionOwnershipTests` and `CatalogNamespaceTests`. Another 46 legacy Schema assertions selected by `ProviderSchemaSqlRendererTests` and `Render_CircularForeignKeysSqlite_RendersInline` passed after updating expected object quoting.
 - Not run: other providers' live QA, MySQL integration tests, full net8.0/net9.0 Schema/Documents suites, the full DubUrl test suite, package-consumer smoke tests, release/workflow tests, or database execution on net8.0/net9.0. No packages were published.
 
-## Consolidated namespace, column and table plans (issues #3, #4, #5)
+## Consolidated namespace, column and table plans (historical candidate validation)
 
 PR #20 contains the complete histories of Schema PRs #17 and #16. Overlapping
 index/table templates preserve namespace-aware names and both plan ownership
@@ -124,3 +124,49 @@ No packages were published and no machine-wide NuGet configuration was changed.
   scenarios were excluded and their remaining migration was not hidden.
 - Final all-framework solution build passed with zero warnings/errors;
   analyzer verification and git diff --check passed.
+
+## Published 0.57.1 discovery QA and CodeFactor remediation
+
+This validation supersedes the earlier local-candidate dependency blocker and
+partial SingleStore run. Core and all providers now use published DubUrl 0.57.1.
+Both MySQL-family fixtures instantiate their native metadata readers and use
+Databases filters. Supported facets, keys, defaults, generated expressions,
+comments, indexes, portable views, filtering, strict/partial inspection and
+round trips are verified against actual catalogs. MySQL also verifies FK closure
+and missing-reference diagnostics. Unsupported custom identity settings and
+expression/filtered/FK/CHECK forms retain their measured engine/renderer limits.
+
+Native UNIQUE indexes are represented as constraints, so DiscoveryUnique verifies
+them without duplicate backing indexes; ordinary index discovery uses a separate
+nonunique BTREE index. SingleStore primary/unique/index discovery explicitly
+chooses supported rowstore layouts and compatible shard keys. Numeric index
+direction is checked independently through native CREATE TABLE definitions;
+character collations are never blindly interpreted as A/D.
+
+CodeFactor's two findings were Complex Method (35) in PrepareColumnPlans and
+Complex Method (21) in TableDefinitionPlanning.Apply. Column context construction,
+generation mapping and validation now have separate helpers; table-plan option,
+namespace and application responsibilities are similarly split. Existing
+synthetic-provider tests preserve consumed-clause and conflicting-ownership
+behavior.
+
+All commands below used the dedicated PR #20 worktree and published packages.
+The QA commands used the local isolated Python environment for TRX validation.
+
+- `./QA/run.ps1 -Database MySql -ResultsDirectory artifacts/results/pr20-discovery/MySql`:
+  62 fixture cases and all 3 MySqlIntegration cases passed, zero skipped.
+- `./QA/run.ps1 -Database SingleStore -ResultsDirectory artifacts/results/pr20-discovery/SingleStore-final`:
+  all 62 cases passed, zero skipped. The preceding full attempt passed 59 cases;
+  its three fixture-assumption failures were corrected and the full suite rerun.
+- Complete SQLite and DuckDB net10.0 QA passed 72 and 66 cases respectively,
+  without skips. Every report passed baseline/shared-inventory validation.
+- Docker tests used the existing pinned images, generated credentials kept only
+  in process memory, and disposable containers/networks removed in finally.
+- Solution build passed across net8.0/net9.0/net10.0 with zero warnings/errors.
+- Focused TableDefinitionTests, SchemaSqlRendererExtensionTests and
+  SchemaInspectorTests passed all 43 cases on each of net8.0/net9.0/net10.0.
+- Complete net10.0 document suite: 128 passed. Analyzer verification and
+  git diff --check passed.
+- Not run locally in this follow-up: PostgreSQL/SQL Server/Oracle QA, complete
+  Schema unit suites, net8.0/net9.0 document suites, packaging, consumer smoke
+  checks or release/publication. No real database tests ran on .NET 8/9.
