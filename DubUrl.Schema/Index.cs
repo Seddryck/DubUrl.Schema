@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -15,6 +15,7 @@ public class Index
     public DatabaseObjectName TableIdentity { get; }
     public OrderedImmutableDictionary<string, IndexColumn> Columns { get; }
     public bool IsUnique { get; }
+    public DubUrl.Querying.Dialects.SchemaIndexStructure Structure { get; }
 
     public Index(string name, string tableName, IndexColumn[] columns)
         : this(new DatabaseObjectName(name), new DatabaseObjectName(tableName), columns, false)
@@ -29,7 +30,12 @@ public class Index
     { }
 
     public Index(DatabaseObjectName identity, DatabaseObjectName tableIdentity, IndexColumn[] columns, bool isUnique)
+        : this(identity, tableIdentity, columns, isUnique, DubUrl.Querying.Dialects.SchemaIndexStructure.Default) { }
+
+    public Index(DatabaseObjectName identity, DatabaseObjectName tableIdentity, IndexColumn[] columns, bool isUnique, DubUrl.Querying.Dialects.SchemaIndexStructure structure)
     {
+        if (!Enum.IsDefined(structure)) throw new ArgumentException("Unknown index structure.", nameof(structure));
+        Structure = structure;
         Identity = identity ?? throw new ArgumentNullException(nameof(identity));
         TableIdentity = tableIdentity ?? throw new ArgumentNullException(nameof(tableIdentity));
         ArgumentNullException.ThrowIfNull(columns);

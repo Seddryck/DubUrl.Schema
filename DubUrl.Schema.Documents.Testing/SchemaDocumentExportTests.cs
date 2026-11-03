@@ -10,6 +10,18 @@ namespace DubUrl.Schema.Documents.Testing;
 
 public class SchemaDocumentExportTests
 {
+    [Test]
+    public void Export_PhysicalOptionsRejectsLossyV1Conversion()
+    {
+        var table = new Table(new DatabaseObjectName("items"), [new Column("id", DbType.Int32)], null, null,
+            new DubUrl.Querying.Dialects.TablePhysicalOptions());
+        Assert.Throws<SchemaDocumentMappingException>(() => new SchemaDocumentExporter().Map(new([table])));
+        var plain = new Table("items", table.Columns.Values.ToArray());
+        var index = new Index(new DatabaseObjectName("idx"), plain.Identity, [new IndexColumn("id")], false,
+            DubUrl.Querying.Dialects.SchemaIndexStructure.Ordered);
+        Assert.Throws<SchemaDocumentMappingException>(() => new SchemaDocumentExporter().Map(new([plain], [index])));
+    }
+
     [TestCase(SchemaDocumentFormat.Json)]
     [TestCase(SchemaDocumentFormat.Yaml)]
     public void Export_RoundTrip_PreservesOrderFacetsKeysGenerationAndUnicode(SchemaDocumentFormat format)

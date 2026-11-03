@@ -23,7 +23,7 @@ public sealed class CommentRenderer : RendererEngine
                 ColumnViewModel { TableIdentity: not null } item => (item.TableIdentity, item.Name, item.Description),
                 _ => throw new ArgumentException("Comment rendering requires a table or column view model.")
             };
-            return string.IsNullOrWhiteSpace(description) ? string.Empty
+            return (column is null && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer) || string.IsNullOrWhiteSpace(description) ? string.Empty
                 : dialect.SchemaSqlRenderer.RenderComment(dialect,
                     new(table.Name, table.Schema, table.Database, table.Catalog), column, description);
         });

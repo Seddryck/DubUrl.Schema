@@ -1,5 +1,5 @@
 {{#each model.Tables}}
-{{identityprerequisites this}}CREATE TABLE {{objectname Identity}} (
+{{identityprerequisites this}}{{CreatePrefix}} {{objectname Identity}} (
 {{#each Columns}}
     {{identity Name}} {{columnspec this ~}}
     {{#if Nullable}} NULL{{/if~}}
@@ -16,6 +16,7 @@
     {{#if Description}}{{columncomment Description}}{{/if~}}
     {{#unless @last}},{{/unless}}
 {{/each}}
+{{#if PortableKeys}}
 {{#if PrimaryKey}}
     , CONSTRAINT {{#if PrimaryKey.Name}}{{identity PrimaryKey.Name}}{{else}}{{identity ([String.Append] 'PK_' Name)}}{{/if}} PRIMARY KEY (
 {{~ #each PrimaryKey.Columns}}
@@ -25,6 +26,10 @@
 {{/if~}}
 {{#each UniqueConstraints}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}UNIQUE ({{#each Columns}}{{identity Name}}{{#unless @last}}, {{/unless}}{{/each}})
+{{/each~}}
+{{/if~}}
+{{#each ProviderDefinitions}}
+    , {{{this}}}
 {{/each~}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
@@ -44,5 +49,5 @@
 )
 {{/each}}
 {{/if~}}
-);
+){{tabledescription this}};
 {{/each}}

@@ -14,13 +14,18 @@ public class Table
     public OrderedImmutableDictionary<string, Column> Columns { get; }
     public ConstraintCollection Constraints { get; }
     public string? Description { get; }
+    public DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; }
 
     public Table(string name, Column[] columns, Constraint[]? constraints = null, string? description = null)
         : this(new DatabaseObjectName(name), columns, constraints, description)
     { }
 
     public Table(DatabaseObjectName identity, Column[] columns, Constraint[]? constraints = null, string? description = null)
+        : this(identity, columns, constraints, description, null) { }
+
+    public Table(DatabaseObjectName identity, Column[] columns, Constraint[]? constraints, string? description, DubUrl.Querying.Dialects.TablePhysicalOptions? physicalOptions)
     {
+        PhysicalOptions = PhysicalOptionValidation.Copy(physicalOptions, columns.Select(column => column.Name));
         Identity = identity ?? throw new ArgumentNullException(nameof(identity));
         Name = identity.Name;
         Columns = OrderedImmutableDictionary<string, Column>.From(

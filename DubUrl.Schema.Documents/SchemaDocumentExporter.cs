@@ -13,6 +13,9 @@ public sealed class SchemaDocumentExporter
         ArgumentNullException.ThrowIfNull(schema);
         try
         {
+            if (schema.Tables.Values.Any(table => table.PhysicalOptions is not null) ||
+                schema.Indexes.Values.Any(index => index.Structure != DubUrl.Querying.Dialects.SchemaIndexStructure.Default))
+                throw new NotSupportedException("Document v1 cannot represent physical table/index options.");
             var document = new SchemaDocument
             {
                 Version = 1,

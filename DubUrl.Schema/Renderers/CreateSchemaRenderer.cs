@@ -25,6 +25,8 @@ public class CreateSchemaRenderer : RendererEngine
         : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, dropIdentitySequences))
     {
         nativeTypes ??= NativeTypeRegistry.Default;
+        AddFormatter("tabledescription", value => value is TableViewModel { Description: not null } table && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer renderer
+            ? renderer.RenderTableDescription(dialect, new(table.Identity.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog), table.Description) : "");
         AddFormatter("columncomment", value => dialect.SchemaSqlRenderer.RenderColumnComment(dialect, (string)value!));
         AddFormatter("check", value => RenderCheck(value, dialect));
         AddFormatter("membership", value => RenderMembership(value, dialect));
@@ -113,6 +115,7 @@ public class CreateSchemaRenderer : RendererEngine
     protected CreateSchemaRenderer(IDbTypeMapper typeMapper, ISqlFunctionMapper sqlFunctionMapper, IDictionary<string, Func<object?, string>> helpers)
         : base(typeof(CreateSchemaRenderer).Assembly, $"{typeof(CreateSchemaRenderer).Namespace}.Templates.CreateTables.sql.hbs")
     {
+        AddFormatter("tabledescription", _ => "");
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");
         AddMappings("dbtype", typeMapper.ToDictionary());

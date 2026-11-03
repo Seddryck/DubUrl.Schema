@@ -31,7 +31,7 @@ public class SchemaScriptRenderer
         Dialect = dialect;
         DropExisting = options == SchemaCreationOptions.DropIfExists;
         NativeTypes = nativeTypes ?? NativeTypeRegistry.Default;
-        SupportsComments = CommentRenderer.Supports(dialect);
+        SupportsComments = CommentRenderer.Supports(dialect) || dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer;
         var templates = new List<RendererEngine>();
         if (options == SchemaCreationOptions.DropIfExists)
         {
@@ -42,7 +42,7 @@ public class SchemaScriptRenderer
 
         templates.Add(new CreateSchemaRenderer(dialect, nativeTypes, options == SchemaCreationOptions.DropIfExists));
         templates.Add(new ForeignKeyRenderer(dialect));
-        if (SupportsComments)
+        if (CommentRenderer.Supports(dialect))
             templates.Add(new CommentRenderer(dialect));
         templates.Add(new CreateIndexRenderer(dialect));
         templates.Add(new CreateViewsRenderer(dialect));
@@ -55,7 +55,11 @@ public class SchemaScriptRenderer
         var tables = CreateTableModels(schema);
         ValidateForeignKeys(schema, tables);
         MarkUniqueIndexColumns(schema, tables);
-        var indexes = schema.Indexes.Values.Select(index => new IndexViewModel(index)).ToArray();
+        TableDefinitionPlanning.Apply(Dialect, schema, tables);
+        var indexes = schema.Indexes.Values.Select(index => new IndexViewModel(index)
+        {
+            ConsumedByTable = Dialect.SchemaSqlRenderer is ITableDefinitionSqlRenderer
+        }).ToArray();
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)
             .Select(view => new ViewViewModel(view)).ToArray();
         var model = new
@@ -93,8 +97,9 @@ public class SchemaScriptRenderer
 
     private void ValidateCommentRendering(Schema schema)
     {
-        if (EngineSupportsComments && !SupportsComments && schema.Tables.Values.Any(table =>
-            table.Description is not null || table.Columns.Values.Any(column => column.Description is not null)))
+        if (EngineSupportsComments && !CommentRenderer.Supports(Dialect) && schema.Tables.Values.Any(table =>
+            (table.Description is not null && Dialect.SchemaSqlRenderer is not ITableDescriptionSqlRenderer)
+            || table.Columns.Values.Any(column => column.Description is not null)))
             throw new NotSupportedException($"Database comments are supported, but comment rendering is not implemented for '{Dialect.GetType().Name}'. Add a provider ISchemaSqlRenderer comment implementation or omit descriptions.");
     }
 

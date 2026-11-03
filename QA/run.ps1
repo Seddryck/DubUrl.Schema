@@ -2,7 +2,7 @@
 param(
     [Parameter(Mandatory)][ValidateSet('PostgreSql','Sqlite','DuckDb','SqlServer','Oracle','SingleStore','MySql')][string]$Database,
     [ValidateSet('net10.0')][string]$Framework = 'net10.0',
-    [string]$DubUrlVersion = '0.55.1',
+    [string]$DubUrlVersion = '0.57.0',
     [string]$Version = '0.0.0'
 )
 $ErrorActionPreference = 'Stop'

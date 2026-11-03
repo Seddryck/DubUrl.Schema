@@ -24,6 +24,36 @@ public class SchemaSqlRendererExtensionTests
     }
 
     [Test]
+    public void DescriptionOnlyHook_IsIndependentOfPhysicalPlansAndPostCreateComments()
+    {
+        var renderer = new DescriptionOnlyRenderer();
+        var dialect = new ProviderDialect(source, renderer);
+        var table = new Table(new DatabaseObjectName("Order", schema: "sales"),
+            [new Column("Id", DbType.Int32)], description: "Owner's 雪");
+        var scriptRenderer = new SchemaScriptRenderer(dialect);
+        var sql = scriptRenderer.Render(new([table]));
+        Assert.That(scriptRenderer.SupportsComments, Is.True);
+        Assert.That(sql, Does.Contain(") PROVIDER_DESCRIPTION;"));
+        Assert.That(renderer.Table, Is.EqualTo(new SchemaSqlObjectName("Order", "sales")));
+        Assert.That(renderer.Description, Is.EqualTo("Owner's 雪"));
+    }
+
+    private sealed class DescriptionOnlyRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer
+    {
+        public SchemaSqlObjectName? Table { get; private set; }
+        public string? Description { get; private set; }
+        public string RenderTableDescription(IDialect dialect, SchemaSqlObjectName table, string description)
+        {
+            Table = table;
+            Description = description;
+            return " PROVIDER_DESCRIPTION";
+        }
+
+        public override string RenderComment(IDialect dialect, SchemaSqlObjectName table, string? column, string description)
+            => throw new InvalidOperationException("The description hook must not call post-create comments.");
+    }
+
+    [Test]
     public void IdentityOverride_InheritsObjectQuotingAndGeneratedColumnSyntax()
     {
         var dialect = new ProviderDialect(source, new IdentityRenderer(source.SchemaSqlRenderer));

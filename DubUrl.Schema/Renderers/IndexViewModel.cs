@@ -9,6 +9,8 @@ namespace DubUrl.Schema.Renderers;
 
 public class IndexViewModel
 {
+    public bool ConsumedByTable { get; internal set; }
+    public DubUrl.Querying.Dialects.SchemaIndexStructure Structure { get; }
     public string Name { get; }
     public string TableName { get; }
     public DatabaseObjectName Identity { get; }
@@ -19,6 +21,7 @@ public class IndexViewModel
     public IndexViewModel(Index index)
     {
         Name = index.Name;
+        Structure = index.Structure;
         TableName = index.TableName;
         Identity = index.Identity;
         TableIdentity = index.TableIdentity;

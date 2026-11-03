@@ -313,13 +313,15 @@ public abstract class ProviderContract : SchemaContract
         foreach (var column in new[] { "none", "empty", "blank" }) Assert.That(observed.Columns.GetValueOrDefault(column), Is.Null.Or.Empty);
     }
 
+    protected virtual TablePhysicalOptions? PhysicalOptions(string scenario) => null;
+
     private void Keys(string scenario)
     {
         var composite = scenario.StartsWith("Composite"); var unique = scenario.EndsWith("Unique");
         var native = scenario.StartsWith("Native") ? new NativeDatabaseType(scenario == "NativeVarcharKey" ? "VARCHAR" : "CHAR") : null;
         Column first = native is null ? Id("b") : new VarLengthColumn("b", DbType.AnsiString, 20, nativeType: native);
         var second = Id("a"); var key = composite ? new[] { first, second } : new[] { first };
-        var table = new Table(Name("key"), [first, second], unique ? [new UniquenessConstraint(key)] : [new PrimaryKeyConstraint(key)]);
+        var table = new Table(new DatabaseObjectName(Name("key")), [first, second], unique ? [new UniquenessConstraint(key)] : [new PrimaryKeyConstraint(key)], null, PhysicalOptions(scenario));
         if (!Deploy(new([table]))) return;
         var value = native is null ? "1" : "'STD'";
         Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)");
@@ -374,7 +376,7 @@ public abstract class ProviderContract : SchemaContract
     }
     private void Indexes(string scenario)
     {
-        var table = new Table(Name("indexed"), [Id("b"), Id("a")]); var composite = scenario is "CompositeIndex" or "IndexDirection";
+        var table = new Table(new DatabaseObjectName(Name("indexed")), [Id("b"), Id("a")], null, null, PhysicalOptions(scenario)); var composite = scenario is "CompositeIndex" or "IndexDirection";
         var index = new Index(Name("idx"), table.Name, composite ? [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)] : [new IndexColumn("b")], scenario == "UniqueIndex");
         if (!Deploy(new([table], [index]))) return;
         var actual = ReadIndexes(database, table.Identity).Where(i => i.Name == index.Name).OrderBy(i => i.Ordinal).ToArray();

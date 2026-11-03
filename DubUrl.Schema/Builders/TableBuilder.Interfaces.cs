@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -19,5 +19,6 @@ public interface ITableConstraintCollectionBuilder : ITableBuilder
 public interface ITableBuilder
 {
     ITableBuilder WithDescription(string? description);
+    ITableBuilder WithPhysicalOptions(DubUrl.Querying.Dialects.TablePhysicalOptions options);
     Table Build();
 }
