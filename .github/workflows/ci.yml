@@ -91,9 +91,7 @@ jobs:
       - name: Unit and document specification tests
         run: |
           foreach ($project in @('DubUrl.Schema.Testing','DubUrl.Schema.Documents.Testing')) {
-            $filter = 'TestCategory!=MySqlIntegration'
-            if ('${{ matrix.framework }}' -ne 'net10.0') { $filter += '&TestCategory!=DuckDbIntegration' }
-            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --filter $filter --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
+            dotnet test "$project/$project.csproj" -c Release -f ${{ matrix.framework }} --no-build --no-restore --logger trx --results-directory "artifacts/results/$project" --collect:'XPlat Code Coverage'
             if ($LASTEXITCODE) { throw "Tests failed for $project." }
             python build/assert_results.py "artifacts/results/$project"
             if ($LASTEXITCODE) { throw 'Missing test results.' }
@@ -158,38 +156,11 @@ jobs:
 
   database:
     needs: version
-    name: ${{ matrix.database }} (${{ matrix.framework }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        database: [PostgreSql, Sqlite, DuckDb, SqlServer, Oracle, SingleStore, MySql]
-        framework: [net10.0]
-        include:
-          - { database: PostgreSql, runner: ubuntu-latest }
-          - { database: Sqlite, runner: windows-latest }
-          - { database: DuckDb, runner: windows-latest }
-          - { database: SqlServer, runner: ubuntu-latest }
-          - { database: Oracle, runner: ubuntu-latest }
-          - { database: SingleStore, runner: ubuntu-latest }
-          - { database: MySql, runner: ubuntu-latest }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/setup-dotnet
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-      - name: Install build validator dependencies
-        run: python -m pip install -r build/requirements.txt
-      - name: Run isolated database fixtures
-        run: ./QA/run.ps1 -Database '${{ matrix.database }}' -Framework '${{ matrix.framework }}' -DubUrlVersion '${{ needs.version.outputs.duburl }}' -Version '${{ needs.version.outputs.semver }}'
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: qa-${{ matrix.database }}-${{ matrix.framework }}
-          path: artifacts/results
-          if-no-files-found: error
+    uses: Seddryck/DubUrl.Providers/.github/workflows/schema-qa.yml@1f07066a4584cc75a93ea8f3a8cb8868ea8948a6
+    with:
+      providers-ref: 1f07066a4584cc75a93ea8f3a8cb8868ea8948a6
+      schema-commit: ${{ github.sha }}
+      duburl-version: ${{ needs.version.outputs.duburl }}
 
   docs:
     needs: version
@@ -203,8 +174,6 @@ jobs:
         run: python -m pip install -r build/requirements.txt
       - name: Test installed SDK/runtime selection
         run: ./build/Test-DotNetSetup.ps1
-      - name: Test required shared database baseline results
-        run: python build/test_assert_results.py
       - name: Test XML validator security
         run: python -m unittest discover -s build -p test_xml_validators.py
       - name: Test library artifact transfer contract
