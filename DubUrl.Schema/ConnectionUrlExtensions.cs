@@ -12,9 +12,9 @@ public static class ConnectionUrlExtensions
 {
     public static void DeploySchema(this ConnectionUrl connectionUrl, Schema schema, SchemaCreationOptions options = SchemaCreationOptions.None)
     {
-        var script = ScriptSchema(connectionUrl, schema, options);
+        var plan = new SchemaScriptRenderer(connectionUrl.Dialect, options).Plan(schema);
         var deployer = new SchemaScriptDeployer();
-        deployer.DeploySchema(connectionUrl, script);
+        deployer.DeploySchema(connectionUrl, plan);
     }
 
     public static void DeploySchema(this ConnectionUrl connectionUrl, Func<ITableCollectionBuilder, ISchemaBuilder> builder, SchemaCreationOptions options = SchemaCreationOptions.None)

@@ -1,5 +1,5 @@
 <Project>
   <PropertyGroup>
-    <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.55.1</DubUrlVersion>
+    <DubUrlVersion Condition="'$(DubUrlVersion)' == ''">0.60.0</DubUrlVersion>
   </PropertyGroup>
 </Project>

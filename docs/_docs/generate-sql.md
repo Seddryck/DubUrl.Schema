@@ -88,3 +88,24 @@ For an existing parent table, pass its metadata in `new Schema(tablesToCreate, i
 A `UniquenessConstraint` on a column is omitted when that column is the complete primary key. Table uniqueness can be declared with `new UniquenessConstraint(columns, name)`; a set matching the primary key is also omitted, regardless of column order. A singleton unique column within a composite primary key is preserved.
 
 `SchemaScriptRenderer.EngineSupportsComments` describes database capability; `SupportsComments` describes the available renderer. SQL Server uses Unicode extended properties, MySQL uses column `COMMENT` clauses and table comments, and Snowflake uses `COMMENT ON`. Descriptions for an engine with an unimplemented renderer raise an actionable implementation-gap error. Engines without database comments, such as SQLite, expose false and omit descriptions.
+
+
+## Deploy models with provider command boundaries
+
+Use `connectionUrl.DeploySchema(schema, options)` or its fluent-builder overload to deploy a model. The renderer validates and builds the whole ordered plan before opening a connection. The deployer then executes each command on one connection, in order, stopping at the first error.
+
+```csharp
+var plan = new SchemaScriptRenderer(connectionUrl.Dialect, options).Plan(schema);
+// Inspect command.Operation and command.ObjectName before execution if needed.
+new SchemaScriptDeployer().DeploySchema(connectionUrl, plan);
+```
+
+Plans preserve sequence prerequisites, tables, foreign keys, comments, indexes and dependency-ordered views. Replacement drops dependent views and tables in reverse dependency order. Indexes belonging to those tables disappear with their tables and are recreated afterward. External reference tables are never dropped. SQL Server gives each `CREATE VIEW` a separate batch while keeping consecutive comments together. Oracle executes individual SQL commands without SQL*Plus terminators; explicitly marked procedural blocks retain their internal and final semicolons.
+
+`Render` and `ScriptSchema` remain text-export APIs. Their output is a script for a suitable database client; it is not an execution plan. The existing `SchemaScriptDeployer.DeploySchema(connectionUrl, string)` overload still submits the exact supplied string as one command. It does not split semicolons, interpret `GO` or `/`, or apply provider terminator changes. Callers supplying strings own their batch boundaries and provider syntax.
+
+Model deployment does not start a transaction or promise rollback. Oracle and MySQL DDL can commit implicitly; an error can leave earlier objects in place. The original provider exception is rethrown, preserving its type, code and stack, with zero-based `Data["SchemaCommandIndex"]`, `Data["SchemaCommandOperation"]`, and optional `Data["SchemaCommandObject"]` identifying the failed command. These details do not include SQL or connection URLs. Inspect and clean up partial deployments before retrying.
+
+Provider implementations belong in DubUrl Core/provider packages. `ISchemaSqlRenderer.PlanCommands` receives complete trusted rendering units and owns batching and command terminators. `ISequenceIdentitySqlRenderer.PlanIdentityPrerequisites` must return explicit prerequisite commands; legacy string-only implementations fail before any commands execute rather than having their SQL guessed or split. Custom procedural units must set `IsProceduralBlock` when their terminator is part of the block.
+
+Command-plan deployment requires DubUrl 0.60.0 or later. Align Core, dialect providers and optional native extensions to the same release.

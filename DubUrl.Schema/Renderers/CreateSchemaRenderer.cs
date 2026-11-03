@@ -22,7 +22,11 @@ public class CreateSchemaRenderer : RendererEngine
     { }
 
     public CreateSchemaRenderer(IDialect dialect, NativeTypeRegistry? nativeTypes, bool dropIdentitySequences)
-        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, nativeTypes ?? NativeTypeRegistry.Default, dropIdentitySequences))
+        : this(dialect, nativeTypes, dropIdentitySequences, true)
+    { }
+
+    internal CreateSchemaRenderer(IDialect dialect, NativeTypeRegistry? nativeTypes, bool dropIdentitySequences, bool includeIdentityPrerequisites)
+        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, nativeTypes ?? NativeTypeRegistry.Default, dropIdentitySequences, includeIdentityPrerequisites))
     {
         nativeTypes ??= NativeTypeRegistry.Default;
         AddFormatter("tabledescription", value => value is TableViewModel { Description: not null } table && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer renderer
@@ -35,13 +39,13 @@ public class CreateSchemaRenderer : RendererEngine
         AddFormatter("columnspec", value => RenderColumnSpecification(value, dialect, nativeTypes));
     }
 
-    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting)
+    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting, bool includeIdentityPrerequisites)
     {
         var helpers = CreateHelpers(dialect);
         helpers.Add("identityprerequisites", value =>
         {
             if (value is TableViewModel table) PrepareColumnPlans(table, dialect, nativeTypes);
-            return RenderIdentityPrerequisites(value, dialect, dropExisting);
+            return includeIdentityPrerequisites ? RenderIdentityPrerequisites(value, dialect, dropExisting) : "";
         });
         return helpers;
     }
