@@ -51,15 +51,8 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        ValidateCommentRendering(schema);
-        var tables = CreateTableModels(schema);
-        ValidateForeignKeys(schema, tables);
-        MarkUniqueIndexColumns(schema, tables);
-        TableDefinitionPlanning.Apply(Dialect, schema, tables);
-        var indexes = schema.Indexes.Values.Select(index => new IndexViewModel(index)
-        {
-            ConsumedByTable = Dialect.SchemaSqlRenderer is ITableDefinitionSqlRenderer
-        }).ToArray();
+        var tables = PrepareTables(schema);
+        var indexes = CreateIndexModels(schema);
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)
             .Select(view => new ViewViewModel(view)).ToArray();
         var model = new
@@ -78,6 +71,103 @@ public class SchemaScriptRenderer
         foreach (var renderer in Templates)
             script.Append(renderer.Render(model));
         return script.ToString();
+    }
+
+    /// <summary>Renders trusted command boundaries before any database connection is opened.</summary>
+    /// <remarks>Text export remains available through Render; this path never parses exported SQL.</remarks>
+    public virtual IReadOnlyList<SchemaSqlCommand> Plan(Schema schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+        var tables = PrepareTables(schema);
+        var indexes = CreateIndexModels(schema);
+        var views = ViewDependencyPlanner.Order(schema.Views.Values).Select(view => new ViewViewModel(view)).ToArray();
+        var commands = new List<SchemaSqlCommand>();
+        var provider = Dialect.SchemaSqlRenderer;
+
+        void Add(RendererEngine renderer, object model, SchemaSqlOperation operation, DatabaseObjectName name)
+            => commands.Add(new(renderer.Render(model), operation, name.ToString()));
+
+        if (DropExisting)
+        {
+            foreach (var view in views.Reverse())
+                Add(new DropViewsIfExistsRenderer(Dialect), new { model = new { ViewsToDrop = new[] { view } } }, SchemaSqlOperation.DropView, view.Identity);
+            // All modeled indexes belong to modeled tables. Dropping those tables also drops their
+            // indexes; separate DROP INDEX commands have incompatible provider syntax and are redundant.
+            foreach (var table in OrderTablesToDrop(schema, tables))
+                Add(new DropTablesIfExistsRenderer(Dialect), new { model = new { TablesToDrop = new[] { table } } }, SchemaSqlOperation.DropTable, table.Identity);
+        }
+
+        AddTableCommands(commands, tables);
+        var foreignKeys = new ForeignKeyRenderer(Dialect);
+        foreach (var table in tables.Where(table => !table.RenderForeignKeysInline))
+        {
+            foreach (var key in table.ForeignKeys)
+            {
+                Add(foreignKeys, new { model = new { Tables = new[] { new { table.Identity, RenderForeignKeysInline = false, ForeignKeys = new[] { key } } } } },
+                    SchemaSqlOperation.ForeignKey, table.Identity);
+            }
+        }
+
+        if (SupportsComments)
+            AddCommentCommands(commands, tables);
+        foreach (var index in indexes.Where(index => !index.ConsumedByTable))
+            Add(new CreateIndexRenderer(Dialect), new { model = new { Indexes = new[] { index } } }, SchemaSqlOperation.CreateIndex, index.Identity);
+        foreach (var view in views)
+            Add(new CreateViewsRenderer(Dialect), new { model = new { Views = new[] { view } } }, SchemaSqlOperation.CreateView, view.Identity);
+
+        // Snapshot the entire plan: rendering/validation failures must occur before execution begins.
+        return Array.AsReadOnly(provider.PlanCommands(Dialect, commands.AsReadOnly()).ToArray());
+    }
+
+    private TableViewModel[] PrepareTables(Schema schema)
+    {
+        ValidateCommentRendering(schema);
+        var tables = CreateTableModels(schema);
+        ValidateForeignKeys(schema, tables);
+        MarkUniqueIndexColumns(schema, tables);
+        TableDefinitionPlanning.Apply(Dialect, schema, tables);
+        return tables;
+    }
+
+    private IndexViewModel[] CreateIndexModels(Schema schema)
+    {
+        var consumedByTable = Dialect.SchemaSqlRenderer is ITableDefinitionSqlRenderer;
+        return schema.Indexes.Values.Select(index => new IndexViewModel(index) { ConsumedByTable = consumedByTable }).ToArray();
+    }
+
+    private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)
+    {
+        var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting, false);
+        foreach (var table in tables)
+        {
+            if (Dialect.SchemaSqlRenderer is ISequenceIdentitySqlRenderer sequence)
+            {
+                foreach (var column in table.Columns.Where(column => column.Generation is IdentityColumnGeneration))
+                {
+                    var identity = (IdentityColumnGeneration)column.Generation!;
+                    var context = new IdentityColumnContext(table.Name, column.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog);
+                    commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
+                }
+            }
+            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } } }), SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+        }
+    }
+
+    private void AddCommentCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)
+    {
+        void Add(object item, string name)
+        {
+            var sql = CommentRenderer.RenderComment(Dialect, item);
+            if (!string.IsNullOrWhiteSpace(sql))
+                commands.Add(new(sql, SchemaSqlOperation.Comment, name));
+        }
+
+        foreach (var table in tables)
+        {
+            Add(table, table.Identity.ToString());
+            foreach (var column in table.Columns)
+                Add(column, $"{table.Identity}.{column.Name}");
+        }
     }
 
     private TableViewModel[] OrderTablesToDrop(Schema schema, TableViewModel[] tables)

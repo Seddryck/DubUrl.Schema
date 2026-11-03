@@ -13,7 +13,7 @@ namespace DubUrl.Schema.QA;
 /// <summary>Providers supply mandatory observations and explicit expectations;
 /// shared scenarios own the assertions.</summary>
 [NonParallelizable]
-public abstract class ProviderContract : SchemaContract
+public abstract partial class ProviderContract : SchemaContract
 {
     protected abstract IReadOnlyDictionary<string, FeatureExpectation> FeatureExpectations { get; }
     protected abstract void ExecuteScript(DbConnection connection, string script);

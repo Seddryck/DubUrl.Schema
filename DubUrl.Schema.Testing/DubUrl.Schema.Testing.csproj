@@ -31,6 +31,7 @@
     <PackageReference Include="DubUrl.Provider.MySql" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.PostgreSql" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.Sqlite" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.Oracle" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.SqlServer" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.Text" Version="$(DubUrlVersion)" />
   </ItemGroup>
