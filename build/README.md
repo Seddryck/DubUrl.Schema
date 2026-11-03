@@ -1,6 +1,6 @@
 # Release and documentation delivery
 
-The Schema and Documents libraries are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). All packages and the documentation ZIP use the same GitVersion SemVer calculated once from the source commit. The DubUrl dependency remains independently pinned by `DubUrlVersion` in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers.
+The Schema and Documents libraries are portable multi-target NuGet packages (`net8.0`, `net9.0`, `net10.0`). All packages and the documentation ZIP use the same GitVersion SemVer calculated once from the source commit. CI resolves the latest listed stable DubUrl release from NuGet once in the version job, verifies that every referenced core/provider package publishes that version, and passes the concrete `DubUrlVersion` to every build, QA, packaging and package-consumer job. An incomplete release or NuGet failure stops the run rather than falling back to older or mixed versions. Local builds retain the extraction baseline in `Directory.Build.props`. No executable RID, libc, or architecture distribution matrix is needed. Native SQLite/DuckDB tests retain Windows runners; PostgreSQL, SQL Server, Oracle, SingleStore and MySQL use Linux containers.
 
 ## Automatic versions and releases
 
@@ -35,7 +35,7 @@ Local unversioned builds use `0.0.0`, as in DubUrl. There is no need to modify b
 
 Merge this repository first to release the initial 0.100.0 automatically, then update the consuming DubUrl PR's package version and CLI/worker lockfiles. Pin the actual published ZIP checksum/source commit in `docs/schema-docs.lock.json` (a squash merge changes the commit). Build with `python build/import_schema_docs.py`, which stages the complete site under `artifacts/docs-site` while retaining the existing URLs and JSON specification identity. Subsequent website updates pin a zero-patch GitHub release; NuGet-only patch versions do not imply a new documentation release.
 
-Dispatch CI with `duburl_version` to test a candidate DubUrl/core provider package set. Manual dispatches never publish, matching the main-branch push boundary in the sibling repositories.
+Dispatch CI with `duburl_version` to override latest-stable selection and test a published DubUrl/core provider package set, including prereleases. The override receives the same package-availability checks. Dependency selection is printed in the version-job log; rerun with that override to reproduce a dependency choice. Test the resolver locally with `./build/Test-DubUrlDependency.ps1`, or select a real version with `Import-Module ./build/DubUrlDependency.psm1; Resolve-DubUrlVersion`. Manual dispatches never publish, matching the main-branch push boundary in the sibling repositories.
 
 ## Packaging the unit-matrix outputs
 

@@ -12,7 +12,7 @@ dotnet test DubUrl.Schema.Testing -c Release -f net10.0 --no-build
 dotnet test DubUrl.Schema.Documents.Testing -c Release -f net10.0 --no-build
 ```
 
-Core and provider packages are pinned to DubUrl 0.55.1, the extraction baseline. Override `-p:DubUrlVersion=<candidate>` to check a candidate core/provider release. No checkout of DubUrl is required. See [real-database QA](QA/README.md) and [release and documentation delivery](build/README.md).
+CI selects the latest stable DubUrl release from NuGet once per run and uses that version for core and provider packages throughout build, QA, packaging and consumer checks. It fails early if any required provider is missing that release. Local builds default to DubUrl 0.55.1, the extraction baseline; override `-p:DubUrlVersion=<candidate>` to select another release. No checkout of DubUrl is required. See [real-database QA](QA/README.md) and [release and documentation delivery](build/README.md).
 
 ## Git hooks
 
