@@ -51,15 +51,8 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        ValidateCommentRendering(schema);
-        var tables = CreateTableModels(schema);
-        ValidateForeignKeys(schema, tables);
-        MarkUniqueIndexColumns(schema, tables);
-        TableDefinitionPlanning.Apply(Dialect, schema, tables);
-        var indexes = schema.Indexes.Values.Select(index => new IndexViewModel(index)
-        {
-            ConsumedByTable = Dialect.SchemaSqlRenderer is ITableDefinitionSqlRenderer
-        }).ToArray();
+        var tables = PrepareTables(schema);
+        var indexes = CreateIndexModels(schema);
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)
             .Select(view => new ViewViewModel(view)).ToArray();
         var model = new
@@ -85,11 +78,8 @@ public class SchemaScriptRenderer
     public virtual IReadOnlyList<SchemaSqlCommand> Plan(Schema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
-        ValidateCommentRendering(schema);
-        var tables = CreateTableModels(schema);
-        ValidateForeignKeys(schema, tables);
-        MarkUniqueIndexColumns(schema, tables);
-        var indexes = schema.Indexes.Values.Select(index => new IndexViewModel(index)).ToArray();
+        var tables = PrepareTables(schema);
+        var indexes = CreateIndexModels(schema);
         var views = ViewDependencyPlanner.Order(schema.Views.Values).Select(view => new ViewViewModel(view)).ToArray();
         var commands = new List<SchemaSqlCommand>();
         var provider = Dialect.SchemaSqlRenderer;
@@ -120,13 +110,29 @@ public class SchemaScriptRenderer
 
         if (SupportsComments)
             AddCommentCommands(commands, tables);
-        foreach (var index in indexes)
+        foreach (var index in indexes.Where(index => !index.ConsumedByTable))
             Add(new CreateIndexRenderer(Dialect), new { model = new { Indexes = new[] { index } } }, SchemaSqlOperation.CreateIndex, index.Identity);
         foreach (var view in views)
             Add(new CreateViewsRenderer(Dialect), new { model = new { Views = new[] { view } } }, SchemaSqlOperation.CreateView, view.Identity);
 
         // Snapshot the entire plan: rendering/validation failures must occur before execution begins.
         return Array.AsReadOnly(provider.PlanCommands(Dialect, commands.AsReadOnly()).ToArray());
+    }
+
+    private TableViewModel[] PrepareTables(Schema schema)
+    {
+        ValidateCommentRendering(schema);
+        var tables = CreateTableModels(schema);
+        ValidateForeignKeys(schema, tables);
+        MarkUniqueIndexColumns(schema, tables);
+        TableDefinitionPlanning.Apply(Dialect, schema, tables);
+        return tables;
+    }
+
+    private IndexViewModel[] CreateIndexModels(Schema schema)
+    {
+        var consumedByTable = Dialect.SchemaSqlRenderer is ITableDefinitionSqlRenderer;
+        return schema.Indexes.Values.Select(index => new IndexViewModel(index) { ConsumedByTable = consumedByTable }).ToArray();
     }
 
     private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)

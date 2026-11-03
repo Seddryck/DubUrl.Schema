@@ -83,10 +83,10 @@ public abstract partial class ProviderContract
         var parent = new Table(prefix + "a", [new Column("id", DbType.Int32,
             constraints: [new Constraints.PrimaryKeyConstraint()])]);
         var foreignKeys = FeatureExpectations["ForeignKey"].Outcome == ExpectedOutcome.Supported;
-        var child = new Table(prefix + "b", [new Column("id", DbType.Int32)], foreignKeys
-            ? [new Constraints.ForeignKeyConstraint(prefix + "fk", ["id"], parent.Identity, ["id"])]
-            : []);
-        var index = new Index(prefix + "ix", child.Name, [new IndexColumn("id")], isUnique: true);
+        var child = new Table(new DatabaseObjectName(prefix + "b"), [Id("b")], foreignKeys
+            ? [new Constraints.ForeignKeyConstraint(prefix + "fk", ["b"], parent.Identity, ["id"])]
+            : [], null, PhysicalOptions("UniqueIndex"));
+        var index = new Index(prefix + "ix", child.Name, [new IndexColumn("b")], isUnique: true);
         var schema = new Schema([parent, child], [index]);
         string Quote(Table table) => provider.RenderObjectName(dialect, null, null, null, table.Name);
         try
