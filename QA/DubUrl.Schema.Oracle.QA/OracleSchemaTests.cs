@@ -17,7 +17,7 @@ public sealed class OracleSchemaTests
         var name = "Qa_" + Guid.NewGuid().ToString("N")[..20];
         var dialects = new DialectRegistryBuilder();
         dialects.AddDialect<OracleDialect>(["oracle"]);
-        var schema = new Schema.Schema([new Table(name, [new Column("Id", DbType.Int32), new VarLengthColumn("Name", DbType.AnsiString, 50)])]);
+        var schema = new global::DubUrl.Schema.Schema([new Table(name, [new Column("Id", DbType.Int32), new VarLengthColumn("Name", DbType.AnsiString, 50)])]);
         var script = new SchemaScriptRenderer(dialects.Build().Get<OracleDialect>()).Render(schema);
         using var connection = OracleTestDatabase.Open();
         using var command = connection.CreateCommand();
