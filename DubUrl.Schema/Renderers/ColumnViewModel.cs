@@ -4,11 +4,21 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using DubUrl.Schema.Constraints;
+using DubUrl.Querying.Dialects;
 
 namespace DubUrl.Schema.Renderers;
 
 public class ColumnViewModel
 {
+    internal bool TableConsumesKeys { get; set; }
+    internal string? PlannedSpecification { get; set; }
+    internal ColumnDefinitionClauses RenderedClauses { get; set; }
+    public bool RenderNullability => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Nullability);
+    public bool RenderPrimaryKey => !TableConsumesKeys && !RenderedClauses.HasFlag(ColumnDefinitionClauses.PrimaryKey);
+    public bool RenderUnique => !TableConsumesKeys && !RenderedClauses.HasFlag(ColumnDefinitionClauses.Unique);
+    public bool RenderDefault => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Default);
+    public bool RenderChecks => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Checks);
+    public bool RenderComment => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Comment);
     public DatabaseObjectName? TableIdentity { get; }
     public string Name { get; }
     public string Type { get; }
@@ -19,8 +29,8 @@ public class ColumnViewModel
     public int Scale { get; }
     public Constraint? Nullable { get; }
     public Constraint? NotNullable { get; }
-    public Constraint? Unique { get; }
-    public PrimaryKeyConstraintViewModel? PrimaryKey { get; }
+    public Constraint? Unique { get; internal set; }
+    public PrimaryKeyConstraintViewModel? PrimaryKey { get; internal set; }
     public CheckConstraint[] Checks { get; }
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }

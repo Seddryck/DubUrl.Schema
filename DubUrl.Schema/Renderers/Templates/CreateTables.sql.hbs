@@ -1,22 +1,24 @@
 {{#each model.Tables}}
-{{identityprerequisites this}}CREATE TABLE {{objectname Identity}} (
+{{identityprerequisites this}}{{CreatePrefix}} {{objectname Identity}} (
 {{#each Columns}}
     {{identity Name}} {{columnspec this ~}}
-    {{#if Nullable}} NULL{{/if~}}
-    {{#if NotNullable}} NOT NULL{{/if~}}
-    {{#if PrimaryKey}} {{#if PrimaryKey.Name}}CONSTRAINT {{identity PrimaryKey.Name}} {{/if}}PRIMARY KEY{{/if~}}
-    {{#if Unique}} UNIQUE{{/if~}}
-    {{#if HasDefaultValue}} DEFAULT {{value DefaultValue}}{{/if~}}
-    {{#each Checks}} CHECK ({{check this}})
+    {{#if RenderNullability}}{{#if Nullable}} NULL{{/if~}}
+    {{#if NotNullable}} NOT NULL{{/if}}{{/if~}}
+    {{#if RenderPrimaryKey}}{{#if PrimaryKey}} {{#if PrimaryKey.Name}}CONSTRAINT {{identity PrimaryKey.Name}} {{/if}}PRIMARY KEY{{/if}}{{/if~}}
+    {{#if RenderUnique}}{{#if Unique}} UNIQUE{{/if}}{{/if~}}
+    {{#if RenderDefault}}{{#if HasDefaultValue}} DEFAULT {{value DefaultValue}}{{/if}}{{/if~}}
+    {{#if RenderChecks}}{{#each Checks}} CHECK ({{check this}})
     {{~ /each ~}}
     {{#each MembershipChecks}} CHECK ({{membership this}})
     {{~ /each ~}}
     {{#each RegexChecks}} CHECK ({{regex this}})
     {{~ /each ~}}
-    {{#if Description}}{{columncomment Description}}{{/if~}}
+    {{/if~}}
+    {{#if RenderComment}}{{#if Description}}{{columncomment Description}}{{/if}}{{/if~}}
     {{#unless @last}},{{/unless}}
 {{/each}}
-{{#if PrimaryKey}}
+{{#if PortableKeys}}
+{{#if SharedPrimaryKey}}
     , CONSTRAINT {{#if PrimaryKey.Name}}{{identity PrimaryKey.Name}}{{else}}{{identity ([String.Append] 'PK_' Name)}}{{/if}} PRIMARY KEY (
 {{~ #each PrimaryKey.Columns}}
 {{identity Name}}{{#unless @last}}, {{/unless~}}
@@ -25,6 +27,10 @@
 {{/if~}}
 {{#each UniqueConstraints}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}UNIQUE ({{#each Columns}}{{identity Name}}{{#unless @last}}, {{/unless}}{{/each}})
+{{/each~}}
+{{/if~}}
+{{#each ProviderDefinitions}}
+    , {{{this}}}
 {{/each~}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
@@ -39,10 +45,10 @@
 {{#each ForeignKeys}}
     , CONSTRAINT {{identity Name}} FOREIGN KEY (
 {{~ #each SourceColumns}}{{identity this}}{{#unless @last}}, {{/unless}}{{/each~}}
-) REFERENCES {{objectname TargetTable}} (
+) REFERENCES {{fktarget this}} (
 {{~ #each TargetColumns}}{{identity this}}{{#unless @last}}, {{/unless}}{{/each~}}
 )
 {{/each}}
 {{/if~}}
-);
+){{tabledescription this}};
 {{/each}}

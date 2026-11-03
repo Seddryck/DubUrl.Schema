@@ -24,6 +24,36 @@ public class SchemaSqlRendererExtensionTests
     }
 
     [Test]
+    public void DescriptionOnlyHook_IsIndependentOfPhysicalPlansAndPostCreateComments()
+    {
+        var renderer = new DescriptionOnlyRenderer();
+        var dialect = new ProviderDialect(source, renderer);
+        var table = new Table(new DatabaseObjectName("Order", schema: "sales"),
+            [new Column("Id", DbType.Int32)], description: "Owner's 雪");
+        var scriptRenderer = new SchemaScriptRenderer(dialect);
+        var sql = scriptRenderer.Render(new([table]));
+        Assert.That(scriptRenderer.SupportsComments, Is.True);
+        Assert.That(sql, Does.Contain(") PROVIDER_DESCRIPTION;"));
+        Assert.That(renderer.Table, Is.EqualTo(new SchemaSqlObjectName("Order", "sales")));
+        Assert.That(renderer.Description, Is.EqualTo("Owner's 雪"));
+    }
+
+    private sealed class DescriptionOnlyRenderer : StandardSchemaSqlRenderer, ITableDescriptionSqlRenderer
+    {
+        public SchemaSqlObjectName? Table { get; private set; }
+        public string? Description { get; private set; }
+        public string RenderTableDescription(IDialect dialect, SchemaSqlObjectName table, string description)
+        {
+            Table = table;
+            Description = description;
+            return " PROVIDER_DESCRIPTION";
+        }
+
+        public override string RenderComment(IDialect dialect, SchemaSqlObjectName table, string? column, string description)
+            => throw new InvalidOperationException("The description hook must not call post-create comments.");
+    }
+
+    [Test]
     public void IdentityOverride_InheritsObjectQuotingAndGeneratedColumnSyntax()
     {
         var dialect = new ProviderDialect(source, new IdentityRenderer(source.SchemaSqlRenderer));
@@ -136,6 +166,181 @@ public class SchemaSqlRendererExtensionTests
         var dialect = new ProviderDialect(source, new IdentityRenderer(source.SchemaSqlRenderer));
         var sql = dialect.SchemaSqlRenderer.RenderComment(dialect, new("Order"), null, "Orders");
         Assert.That(sql, Does.Contain("sys.sp_addextendedproperty"));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ColumnPlan_ReceivesKeyContextAndConsumesClauses(bool tableKey)
+    {
+        var id = new Column("Id", DbType.Int32,
+            constraints: tableKey ? [new NotNullableConstraint()] : [new PrimaryKeyConstraint("PK_Order"), new NotNullableConstraint()],
+            generation: new IdentityColumnGeneration());
+        var table = new Table(new DatabaseObjectName("Order", schema: "sales"), [id],
+            tableKey ? [new PrimaryKeyConstraint(id, "PK_Order")] : []);
+        var renderer = new ColumnPlanRenderer(new("INTEGER PROVIDER_KEY", ColumnDefinitionClauses.Generation
+            | ColumnDefinitionClauses.PrimaryKey | ColumnDefinitionClauses.Nullability));
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([table]));
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("[Id] INTEGER PROVIDER_KEY"));
+            Assert.That(sql, Does.Not.Contain("PRIMARY KEY"));
+            Assert.That(sql, Does.Not.Contain("NOT NULL"));
+            Assert.That(renderer.Context!.Table, Is.EqualTo(new SchemaSqlObjectName("Order", "sales")));
+            Assert.That(renderer.Context.Column, Is.EqualTo("Id"));
+            Assert.That(renderer.Context.Type, Is.EqualTo("INTEGER"));
+            Assert.That(renderer.Context.PrimaryKeyColumns, Is.EqualTo(new[] { "Id" }));
+            Assert.That(renderer.Context.PrimaryKeyName, Is.EqualTo("PK_Order"));
+            Assert.That(renderer.Context.TablePrimaryKey, Is.EqualTo(tableKey));
+            Assert.That(renderer.Context.NotNullable, Is.True);
+            Assert.That(renderer.Context.Generation, Is.EqualTo(new ColumnGenerationContext(true)));
+        });
+    }
+
+    [Test]
+    public void DecliningColumnPlan_PreservesLegacyIdentityAndGeneratedHooks()
+    {
+        var renderer = new ColumnPlanRenderer(null);
+        var table = new Table("Order", [
+            new Column("Id", DbType.Int32, generation: new IdentityColumnGeneration(10, 2)),
+            new Column("Copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ValueExpression(7)))
+        ]);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([table]));
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql, Does.Contain("INTEGER LEGACY_IDENTITY(10, 2)"));
+            Assert.That(sql, Does.Contain("INTEGER LEGACY_GENERATED(7)"));
+            Assert.That(renderer.Context!.Generation!.Expression, Is.EqualTo("7"));
+            Assert.That(renderer.Context.Generation.Stored, Is.True);
+        });
+    }
+
+    [TestCase(ColumnDefinitionClauses.None, true)]
+    [TestCase(ColumnDefinitionClauses.Unique | ColumnDefinitionClauses.Default | ColumnDefinitionClauses.Checks | ColumnDefinitionClauses.Comment, false)]
+    public void ColumnPlan_PreservesOnlyUnclaimedModifiers(ColumnDefinitionClauses clauses, bool shared)
+    {
+        var column = new Column("Id", DbType.Int32, defaultValue: 3, description: "id",
+            constraints: [new UniquenessConstraint(), new CheckConstraint(new ValueExpression(1), "=", new ValueExpression(1))]);
+        var renderer = new ColumnPlanRenderer(new("INTEGER PROVIDER", clauses));
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([new Table("Order", [column])]));
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql.Contains(" UNIQUE", StringComparison.Ordinal), Is.EqualTo(shared));
+            Assert.That(sql.Contains(" DEFAULT 3", StringComparison.Ordinal), Is.EqualTo(shared));
+            Assert.That(sql.Contains(" CHECK (1 = 1)", StringComparison.Ordinal), Is.EqualTo(shared));
+            Assert.That(sql.Contains(" INLINE_COMMENT", StringComparison.Ordinal), Is.EqualTo(shared));
+            Assert.That(sql.Contains("SEPARATE_COMMENT", StringComparison.Ordinal), Is.EqualTo(shared));
+            Assert.That(renderer.Context!.DefaultExpression, Is.EqualTo("3"));
+            Assert.That(renderer.Context.Checks, Is.EqualTo(new[] { "1 = 1" }));
+            Assert.That(renderer.Context.Description, Is.EqualTo("id"));
+        });
+    }
+
+    [Test]
+    public void ColumnPlan_CannotConsumeCompositePrimaryKey()
+    {
+        var id = new Column("Id", DbType.Int32);
+        var other = new Column("Other", DbType.Int32);
+        var table = new Table("Order", [id, other], [new PrimaryKeyConstraint([id, other])]);
+        var renderer = new ColumnPlanRenderer(new("INTEGER", ColumnDefinitionClauses.PrimaryKey));
+        Assert.That(() => new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([table])),
+            Throws.TypeOf<NotSupportedException>().With.Message.Contains("single-column primary key"));
+    }
+
+    [TestCase("", ColumnDefinitionClauses.Generation)]
+    [TestCase("INTEGER", ColumnDefinitionClauses.None)]
+    public void ColumnPlan_RejectsIncompleteSpecification(string specification, ColumnDefinitionClauses clauses)
+    {
+        var table = new Table("Order", [new Column("Id", DbType.Int32, generation: new IdentityColumnGeneration())]);
+        var renderer = new ColumnPlanRenderer(new(specification, clauses));
+        Assert.That(() => new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([table])),
+            Throws.TypeOf<NotSupportedException>());
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ColumnPlan_CoordinatesSequencePrerequisites(bool consumeGeneration)
+    {
+        var renderer = new SequencePlanRenderer(consumeGeneration);
+        var table = new Table("Order", [new Column("Id", DbType.Int32, generation: new IdentityColumnGeneration())]);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new Schema([table]));
+        Assert.Multiple(() =>
+        {
+            Assert.That(sql.Contains("CREATE_SEQUENCE", StringComparison.Ordinal), Is.EqualTo(!consumeGeneration));
+            Assert.That(sql.Contains("SEQUENCE_VALUE", StringComparison.Ordinal), Is.EqualTo(!consumeGeneration));
+            Assert.That(sql.Contains("PLANNED_GENERATION", StringComparison.Ordinal), Is.EqualTo(consumeGeneration));
+        });
+    }
+
+    private sealed class SequencePlanRenderer(bool consumeGeneration) : StandardSchemaSqlRenderer, IColumnDefinitionSqlRenderer, ISequenceIdentitySqlRenderer
+    {
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+            => consumeGeneration ? new("INTEGER PLANNED_GENERATION", ColumnDefinitionClauses.Generation) : null;
+        public string RenderIdentityPrerequisite(IDialect dialect, IdentityColumnContext column, long seed, long increment, bool dropExisting)
+            => "CREATE_SEQUENCE;";
+        public string RenderIdentityColumn(IDialect dialect, IdentityColumnContext column, string type) => $"{type} SEQUENCE_VALUE";
+    }
+
+    private sealed class ColumnPlanRenderer(ColumnDefinitionPlan? plan) : StandardSchemaSqlRenderer, IColumnDefinitionSqlRenderer
+    {
+        public override bool SupportsCommentRendering => true;
+        public override string RenderComment(IDialect dialect, SchemaSqlObjectName table, string? column, string description) => "SEPARATE_COMMENT";
+        public ColumnDefinitionContext? Context { get; private set; }
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+        {
+            Context = column;
+            return plan;
+        }
+
+        public override string RenderIdentity(IDialect dialect, string type, long seed, long increment)
+            => $"{type} LEGACY_IDENTITY({seed}, {increment})";
+        public override string RenderGenerated(IDialect dialect, string type, string expression, bool stored)
+            => $"{type} LEGACY_GENERATED({expression})";
+        public override string RenderColumnComment(IDialect dialect, string description) => " INLINE_COMMENT";
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CombinedColumnAndTablePlans_PreserveKeyContextWithoutDuplicateEmission(bool tableKey)
+    {
+        var id = new Column("Id", DbType.Int32, constraints: tableKey ? [] : [new PrimaryKeyConstraint("PK_Order")]);
+        var table = new Table("Order", [id], tableKey ? [new PrimaryKeyConstraint(id, "PK_Order")] : []);
+        var renderer = new CombinedPlanRenderer(false);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new([table]));
+        Assert.That(renderer.ColumnContext!.PrimaryKeyColumns, Is.EqualTo(new[] { "Id" }));
+        Assert.That(sql, Does.Contain("PROVIDER_PRIMARY_KEY"));
+        Assert.That(sql, Does.Not.Contain("PRIMARY KEY"));
+    }
+
+    [Test]
+    public void CombinedColumnAndTablePlans_RejectConflictingKeyOwnership()
+    {
+        var table = new Table("Order", [new Column("Id", DbType.Int32, constraints: [new PrimaryKeyConstraint()])]);
+        Assert.Throws<NotSupportedException>(() => new SchemaScriptRenderer(new ProviderDialect(source,
+            new CombinedPlanRenderer(true))).Render(new([table])));
+    }
+
+    [Test]
+    public void CombinedColumnAndTablePlans_PreserveColumnUniquenessContext()
+    {
+        var table = new Table("Order", [new Column("Code", DbType.Int32, constraints: [new UniquenessConstraint()])]);
+        var renderer = new CombinedPlanRenderer(false);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, renderer)).Render(new([table]));
+        Assert.That(renderer.ColumnContext!.Unique, Is.True);
+        Assert.That(sql, Does.Not.Contain(" UNIQUE"));
+    }
+
+    private sealed class CombinedPlanRenderer(bool claimKey) : StandardSchemaSqlRenderer, IColumnDefinitionSqlRenderer, ITableDefinitionSqlRenderer
+    {
+        public ColumnDefinitionContext? ColumnContext { get; private set; }
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+        {
+            ColumnContext = column;
+            return new(column.Type, claimKey ? ColumnDefinitionClauses.PrimaryKey : ColumnDefinitionClauses.None);
+        }
+
+        public TableDefinitionPlan RenderTableDefinition(IDialect dialect, TableDefinitionContext table)
+            => new("CREATE TABLE", ["PROVIDER_PRIMARY_KEY"]);
+        public string RenderCreateIndex(IDialect dialect, IndexDefinitionContext index) => throw new NotSupportedException();
     }
 
     private sealed class CommentSqlRenderer : StandardSchemaSqlRenderer

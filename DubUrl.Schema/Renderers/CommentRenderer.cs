@@ -17,13 +17,14 @@ public sealed class CommentRenderer : RendererEngine
             AddFormatter(helper.Key, helper.Value);
         AddFormatter("comment", value =>
         {
+            if (value is ColumnViewModel { RenderComment: false }) return string.Empty;
             var (table, column, description) = value switch
             {
                 TableViewModel item => (item.Identity, (string?)null, item.Description),
                 ColumnViewModel { TableIdentity: not null } item => (item.TableIdentity, item.Name, item.Description),
                 _ => throw new ArgumentException("Comment rendering requires a table or column view model.")
             };
-            return string.IsNullOrWhiteSpace(description) ? string.Empty
+            return (column is null && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer) || string.IsNullOrWhiteSpace(description) ? string.Empty
                 : dialect.SchemaSqlRenderer.RenderComment(dialect,
                     new(table.Name, table.Schema, table.Database, table.Catalog), column, description);
         });

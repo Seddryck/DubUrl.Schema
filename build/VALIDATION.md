@@ -75,3 +75,98 @@ Local validation used Windows, the installed .NET 11 preview SDK and .NET 8/9/10
 - A live NuGet check selected 0.56.0 and verified all 10 core/provider package IDs. The full Release solution built for net8.0/net9.0/net10.0 with `-p:DubUrlVersion=0.56.0`, zero warnings/errors (installed SDK 11.0.100-rc.2.26504.105).
 - Schema (190 cases, including embedded DuckDB) and Documents (127 cases) tests passed on net10.0 with `--no-build --no-restore --filter 'TestCategory!=MySqlIntegration'`. Both libraries packed using `--no-build --no-restore`; package-only consumer rendering passed on net8.0/net9.0/net10.0 using the selected SQLite provider and an isolated package cache.
 - Not run locally: net8.0/net9.0 unit/document suites, provider QA suites, MySQL integration cases, coverage collection, Python validator suites, GitVersion history tests, documentation generation and publication. The PR workflow retains the existing full CI checks and release boundaries.
+
+## SQLite namespace round trips (issue #3)
+
+- Coordinated Core/SQLite changes are in [DubUrl PR #1788](https://github.com/Seddryck/DubUrl/pull/1788). Local packages use `0.55.2-namespace.3`, built with `dotnet pack -c Release -p:Version=0.55.2-namespace.3` for Core and the nine provider packages referenced by this solution. The candidate feed is local and unpublished. The dependency pin must be replaced with a published matching release before merging this Schema branch; hosted CI cannot restore this local candidate.
+- `dotnet build DubUrl.Schema.sln -c Release --no-restore` passed for net8.0/net9.0/net10.0 with zero warnings/errors. The corresponding DubUrl solution build passed for all three TFMs with existing warnings. `dotnet format DubUrl.Schema.sln analyzers --verify-no-changes --no-restore` and `git diff --check` passed. Builds used the installed .NET 11 preview SDK; database execution used the .NET 10 runtime only.
+- All 64 SQLite QA cases passed on net10.0 without skips, including the positive `Shared_DiscoveryRoundTrip` and a new fresh-connection round trip of main/attached databases, composite PK/FK, UNIQUE, defaults/facets, ordered indexes and projection views. It checks same-named objects in distinct databases, literal dots/quotes in aliases/object/column names, both qualified and unqualified view sources, live FK enforcement, database/table filtering, view inventory and reference closure. Existing rich-metadata diagnostics remain green.
+- The net10.0 Schema suite passed 196 tests with `TestCategory!=MySqlIntegration`, including its embedded DuckDB integration cases. The complete net10.0 Documents suite passed 127 tests. Focused `SchemaInspectorTests`, `SchemaSqlRendererExtensionTests` and `ProviderSchemaSqlRendererTests` passed 68 cases each on net8.0 and net9.0; these selections execute no databases.
+- Provider repository net10.0 checks passed 22 tests selected by `SqliteNamespaceTests`, `Discovery.SchemaInspectionTests`, `InspectionConnectionOwnershipTests` and `CatalogNamespaceTests`. Another 46 legacy Schema assertions selected by `ProviderSchemaSqlRendererTests` and `Render_CircularForeignKeysSqlite_RendersInline` passed after updating expected object quoting.
+- Not run: other providers' live QA, MySQL integration tests, full net8.0/net9.0 Schema/Documents suites, the full DubUrl test suite, package-consumer smoke tests, release/workflow tests, or database execution on net8.0/net9.0. No packages were published.
+
+## Consolidated namespace, column and table plans (historical candidate validation)
+
+PR #20 contains the complete histories of Schema PRs #17 and #16. Overlapping
+index/table templates preserve namespace-aware names and both plan ownership
+contracts. Primary/unique context survives table planning; conflicting column
+and table ownership is rejected by synthetic-provider regressions.
+
+The published DubUrl 0.57.0 contains the column/table contracts but does not
+contain the namespace APIs from open DubUrl PR #1788. The consolidated Schema
+PR remains draft and pins unpublished local `0.57.1-schema-options.1` packages.
+Replace this pin with a compatible published release after #1788 merges;
+ordinary hosted CI cannot restore this local candidate, and a 0.57.0 override
+fails compilation because the namespace methods/filters do not exist there.
+
+Local validation packages were built from the clean DubUrl `fix/sqlite-namespace`
+worktree at `8134fd01` with `dotnet pack -c Release
+-p:Version=0.57.1-schema-options.1 -o <local-feed>` for Core and the ten referenced
+provider projects (including DuckDb.Native). Restore Schema using
+`dotnet restore DubUrl.Schema.sln -p:RestoreAdditionalProjectSources=<local-feed>`.
+No packages were published and no machine-wide NuGet configuration was changed.
+
+- Focused TableDefinitionTests, SchemaScriptRendererTests,
+  SchemaSqlRendererExtensionTests, ProviderSchemaSqlRendererTests,
+  SchemaInspectorTests and builder tests, excluding MySqlIntegration and
+  DuckDbIntegration: 169 passed on each of net8.0/net9.0/net10.0.
+- Complete net10.0 document suite: 128 passed, including SQLite quoted SQL.
+- Complete SQLite net10.0 QA: 72 passed without skips; both required baseline
+  and shared scenario inventory were validated. Stale check/generated/native-key
+  expectations were replaced by positive checks against the newer reader.
+- SingleStore deployment scenarios are checked separately from its still-stale
+  discovery/diagnostic scenarios. Database execution uses net10.0 only.
+- Not run for this consolidation: other database QA, the full SingleStore
+  fixture, full Schema unit suites, net8.0/net9.0 document suites, consumer
+  smoke tests, Schema packaging, release checks or publication.
+- Final SingleStore deployment subset: 39 passed without skips on net10.0;
+  TRX validated, disposable container and network removed. Discovery/diagnostic
+  scenarios were excluded and their remaining migration was not hidden.
+- Final all-framework solution build passed with zero warnings/errors;
+  analyzer verification and git diff --check passed.
+
+## Published 0.57.1 discovery QA and CodeFactor remediation
+
+This validation supersedes the earlier local-candidate dependency blocker and
+partial SingleStore run. Core and all providers now use published DubUrl 0.57.1.
+Both MySQL-family fixtures instantiate their native metadata readers and use
+Databases filters. Supported facets, keys, defaults, generated expressions,
+comments, indexes, portable views, filtering, strict/partial inspection and
+round trips are verified against actual catalogs. MySQL also verifies FK closure
+and missing-reference diagnostics. Unsupported custom identity settings and
+expression/filtered/FK/CHECK forms retain their measured engine/renderer limits.
+
+Native UNIQUE indexes are represented as constraints, so DiscoveryUnique verifies
+them without duplicate backing indexes; ordinary index discovery uses a separate
+nonunique BTREE index. SingleStore primary/unique/index discovery explicitly
+chooses supported rowstore layouts and compatible shard keys. Numeric index
+direction is checked independently through native CREATE TABLE definitions;
+character collations are never blindly interpreted as A/D.
+
+CodeFactor's two findings were Complex Method (35) in PrepareColumnPlans and
+Complex Method (21) in TableDefinitionPlanning.Apply. Column context construction,
+generation mapping and validation now have separate helpers; table-plan option,
+namespace and application responsibilities are similarly split. Existing
+synthetic-provider tests preserve consumed-clause and conflicting-ownership
+behavior.
+
+All commands below used the dedicated PR #20 worktree and published packages.
+The QA commands used the local isolated Python environment for TRX validation.
+
+- `./QA/run.ps1 -Database MySql -ResultsDirectory artifacts/results/pr20-discovery/MySql`:
+  62 fixture cases and all 3 MySqlIntegration cases passed, zero skipped.
+- `./QA/run.ps1 -Database SingleStore -ResultsDirectory artifacts/results/pr20-discovery/SingleStore-single-composite`:
+  all 62 cases passed, zero skipped, including named singleton and composite UNIQUE keys sharing shard column b. The preceding full attempt passed 59 cases;
+  its three fixture-assumption failures were corrected and the full suite rerun.
+- Complete SQLite and DuckDB net10.0 QA passed 72 and 66 cases respectively,
+  without skips. Every report passed baseline/shared-inventory validation.
+- Docker tests used the existing pinned images, generated credentials kept only
+  in process memory, and disposable containers/networks removed in finally.
+- Solution build passed across net8.0/net9.0/net10.0 with zero warnings/errors.
+- Focused TableDefinitionTests, SchemaSqlRendererExtensionTests and
+  SchemaInspectorTests passed all 43 cases on each of net8.0/net9.0/net10.0.
+- Complete net10.0 document suite: 128 passed. Analyzer verification and
+  git diff --check passed.
+- Not run locally in this follow-up: PostgreSQL/SQL Server/Oracle QA, complete
+  Schema unit suites, net8.0/net9.0 document suites, packaging, consumer smoke
+  checks or release/publication. No real database tests ran on .NET 8/9.

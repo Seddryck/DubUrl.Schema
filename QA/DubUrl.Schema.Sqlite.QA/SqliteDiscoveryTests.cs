@@ -44,7 +44,9 @@ public class SqliteDiscoveryTests
             Assert.That(result.Schema.Indexes.Values.Single().Columns.Values.First().SortDirection, Is.EqualTo(IndexSortDirection.Descending));
             Assert.That(result.Schema.Views.Values.Select(view => view.Name), Does.Contain("portable"));
             Assert.That(result.Diagnostics.Where(item => item.Feature == SchemaFeature.Indexes).Count(), Is.EqualTo(2));
-            Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Contain(SchemaFeature.Generation));
+            Assert.That(result.Schema.Tables.Values.Single().Columns["computed"].Generation, Is.TypeOf<GeneratedColumnGeneration>());
+            Assert.That(((GeneratedColumnGeneration)result.Schema.Tables.Values.Single().Columns["computed"].Generation!).Storage, Is.EqualTo(GeneratedColumnStorage.Virtual));
+            Assert.That(result.Diagnostics.Select(item => item.Feature), Does.Not.Contain(SchemaFeature.Generation));
             Assert.That(result.Diagnostics.Select(item => item.Code), Does.Contain("SDI008"));
         });
     }

@@ -9,6 +9,11 @@ namespace DubUrl.Schema.Renderers;
 
 public class TableViewModel
 {
+    public string CreatePrefix { get; internal set; } = "CREATE TABLE";
+    public string[] ProviderDefinitions { get; internal set; } = [];
+    public bool PortableKeys { get; internal set; } = true;
+    public DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; }
+    public PrimaryKeyConstraintViewModel? SharedPrimaryKey => Columns.Any(column => !column.RenderPrimaryKey) ? null : PrimaryKey;
     public string Name { get; }
     public DatabaseObjectName Identity { get; }
     public ColumnViewModel[] Columns { get; }
@@ -26,6 +31,7 @@ public class TableViewModel
 
     public TableViewModel(Table table, bool renderForeignKeysInline = false)
     {
+        PhysicalOptions = table.PhysicalOptions;
         Name = table.Name;
         Identity = table.Identity;
         var primaryKey = table.Constraints.Get<PrimaryKeyConstraint>();
@@ -50,7 +56,7 @@ public class TableViewModel
         RegexChecks = [.. table.Constraints.OfType<RegexCheckConstraint>()];
         Checks = [.. table.Constraints.OfType<CheckConstraint>()];
         ForeignKeys = table.Constraints.OfType<ForeignKeyConstraint>()
-            .Select(constraint => new ForeignKeyConstraintViewModel(constraint))
+            .Select(constraint => new ForeignKeyConstraintViewModel(constraint, table.Identity))
             .ToArray();
         RenderForeignKeysInline = renderForeignKeysInline;
         Description = table.Description;

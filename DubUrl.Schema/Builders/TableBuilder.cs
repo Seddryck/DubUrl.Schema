@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -14,6 +14,13 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
     private ColumnCollectionBuilder Columns { get; set; } = [];
     private TableConstraintCollectionBuilder Constraints { get; set; } = [];
     private string? Description { get; set; }
+    private DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; set; }
+
+    public ITableBuilder WithPhysicalOptions(DubUrl.Querying.Dialects.TablePhysicalOptions options)
+    {
+        PhysicalOptions = options ?? throw new ArgumentNullException(nameof(options));
+        return this;
+    }
 
     public ITableColumnCollectionBuilder WithName(string name)
     {
@@ -84,6 +91,6 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (duplicateConstraintNames.Length > 0)
             throw new InvalidOperationException($"Constraint names must be unique within table '{Name}': {string.Join(", ", duplicateConstraintNames)}.");
 
-        return new Table(Identity!, columns, [.. constraints], Description);
+        return new Table(Identity!, columns, [.. constraints], Description, PhysicalOptions);
     }
 }

@@ -2,11 +2,71 @@ using System.Data;
 using DubUrl.Discovery;
 using DubUrl.Schema.Constraints;
 using NUnit.Framework;
+using ForeignKeyConstraint = DubUrl.Schema.Constraints.ForeignKeyConstraint;
 
 namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
+    [TestCase(null, "main", null)]
+    [TestCase("sales", "store", null)]
+    [TestCase("sales", "store", "server")]
+    public void Map_NativeNamespaces_PreserveLiteralComponentsAcrossRelationships(string? schema, string? database, string? catalog)
+    {
+        var parent = new MetadataName("parent.table", schema, database, catalog);
+        var child = new MetadataName("child", schema, database, catalog);
+        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.ForeignKeys, SchemaFeature.Indexes, SchemaFeature.Views];
+        var metadata = new SchemaMetadata([
+            new(parent, [new("id", 0, DbType.Int32, false)])
+            { Indexes = [new(new("index.name", schema, database, catalog), [new("id")])] },
+            new(child, [new("id", 0, DbType.Int32, false)])
+            { ForeignKeys = [new("fk", ["id"], parent, ["id"])] }
+        ], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), [])
+        { Views = [new(new("view.name", schema, database, catalog), [], parent, [new(new("column", "id"))])] };
+        var result = new SchemaInspector().Map(metadata, new() { Features = features });
+        Assert.That(result.IsComplete, Is.True);
+        var expected = new DatabaseObjectName(parent.Name, schema, database, catalog);
+        Assert.That(result.Schema!.Tables[expected.Key].Identity, Is.EqualTo(expected));
+        Assert.That(result.Schema.Tables.Values.Single(table => table.Name == "child").Constraints.OfType<ForeignKeyConstraint>().Single().TargetTable, Is.EqualTo(expected));
+        Assert.That(result.Schema.Indexes.Values.Single().TableIdentity, Is.EqualTo(expected));
+        Assert.That(result.Schema.Views.Values.Single().Query.Source, Is.EqualTo(expected));
+    }
+
+    [TestCase("database")]
+    [TestCase("schema")]
+    [TestCase("catalog")]
+    public void Map_NamespaceFilters_ApplyToTablesViewsAndInventory(string component)
+    {
+        MetadataName Name(string name, string scope) => component switch
+        {
+            "database" => new(name, Database: scope), "catalog" => new(name, Catalog: scope), _ => new(name, Schema: scope)
+        };
+        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Views];
+        var metadata = new SchemaMetadata(new[] { "literal.scope", "other" }.Select(scope =>
+            new MetadataTable(Name("same.table", scope), [new("id", 0, DbType.Int32, false)])).ToArray(),
+            features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), [])
+        { Views = new[] { "literal.scope", "other" }.Select(scope => new MetadataView(Name("same.view", scope), [], Name("same.table", scope), [new(new("column", "id"))])).ToArray() };
+        var options = new DiscoveryOptions { Features = features };
+        options = component switch
+        {
+            "database" => options with { Databases = ["literal.scope"] },
+            "catalog" => options with { Catalogs = ["literal.scope"] },
+            _ => options with { Schemas = ["literal.scope"] }
+        };
+        var inspector = new SchemaInspector();
+        var result = inspector.Map(metadata, options);
+        Assert.That(result.IsComplete, Is.True);
+        Assert.That(result.Schema!.Tables.Count, Is.EqualTo(1));
+        Assert.That(result.Schema.Views.Count, Is.EqualTo(1));
+        Assert.That(result.ViewInventory.Single().Identity, Is.EqualTo(Name("same.view", "literal.scope")));
+        var tableFilter = inspector.Map(metadata, new() { Features = features, Tables = [Name("same.table", "literal.scope")] });
+        Assert.That(tableFilter.IsComplete, Is.True);
+        Assert.That(tableFilter.Schema!.Tables.Count, Is.EqualTo(1));
+        var missing = inspector.Map(metadata, options with { Tables = [Name("same.table", "other")] });
+        Assert.That(missing.IsSuccess, Is.False);
+        Assert.That(missing.Diagnostics.Single().Code, Is.EqualTo("SDI004"));
+    }
+
     private static readonly SchemaFeature[] Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.UniqueConstraints, SchemaFeature.Indexes];
 
     private static MetadataTable Table() => new(new("sample"),

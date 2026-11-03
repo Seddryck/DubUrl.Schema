@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +13,13 @@ public class IndexBuilder : IIndexTableBuilder, IIndexColumnCollectionBuilder, I
     private DatabaseObjectName? TableIdentity { get; set; }
     private IndexColumnCollectionBuilder Columns { get; set; } = [];
     private bool IsUnique { get; set; }
+    private DubUrl.Querying.Dialects.SchemaIndexStructure Structure { get; set; }
+
+    public IIndexBuilder WithStructure(DubUrl.Querying.Dialects.SchemaIndexStructure structure)
+    {
+        Structure = structure;
+        return this;
+    }
 
     public IIndexTableBuilder WithName(string name)
     {
@@ -58,6 +65,6 @@ public class IndexBuilder : IIndexTableBuilder, IIndexColumnCollectionBuilder, I
         if (columns.GroupBy(c => c.Name).Count() != columns.Length)
             throw new InvalidOperationException("Column names must be unique.");
 
-        return new Index(Identity, TableIdentity, columns, IsUnique);
+        return new Index(Identity, TableIdentity, columns, IsUnique, Structure);
     }
 }

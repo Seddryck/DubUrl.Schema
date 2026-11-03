@@ -1,6 +1,7 @@
 using System.Data.Common;
 using MySqlConnector;
 using DubUrl.Discovery;
+using DubUrl.Provider.MySql.Discovery;
 using DubUrl.Schema;
 using DubUrl.Schema.QA;
 
@@ -43,41 +44,44 @@ public sealed partial class MySqlBaselineTests
             ["UniqueIndex"] = FeatureExpectation.Supported,
             ["IndexDirection"] = FeatureExpectation.Supported,
             ["ProjectionView"] = FeatureExpectation.Supported,
-            ["DiscoveryTablesColumns"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryFacets"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryPrimaryKey"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryUnique"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryForeignKey"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryDefaults"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryIdentity"] = new(ExpectedOutcome.NoDiscovery,"No schema discovery capability is registered."),
-            ["DiscoveryChecks"] = new(ExpectedOutcome.NoDiscovery,"No schema discovery capability is registered."),
-            ["DiscoveryGeneration"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryComments"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryIndexes"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryViews"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryTableFilter"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoverySchemaFilter"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryClosure"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryPartial"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryStrict"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiscoveryRoundTrip"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
+            ["DiscoveryTablesColumns"] = FeatureExpectation.Supported,
+            ["DiscoveryFacets"] = FeatureExpectation.Supported,
+            ["DiscoveryPrimaryKey"] = FeatureExpectation.Supported,
+            ["DiscoveryUnique"] = FeatureExpectation.Supported,
+            ["DiscoveryForeignKey"] = FeatureExpectation.Supported,
+            ["DiscoveryDefaults"] = FeatureExpectation.Supported,
+            ["DiscoveryIdentity"] = new(ExpectedOutcome.RendererRejects,"Per-column identity seed/increment cannot be represented.","seed"),
+            ["DiscoveryChecks"] = FeatureExpectation.Supported,
+            ["DiscoveryGeneration"] = FeatureExpectation.Supported,
+            ["DiscoveryComments"] = FeatureExpectation.Supported,
+            ["DiscoveryIndexes"] = FeatureExpectation.Supported,
+            ["DiscoveryViews"] = FeatureExpectation.Supported,
+            ["DiscoveryTableFilter"] = FeatureExpectation.Supported,
+            ["DiscoverySchemaFilter"] = FeatureExpectation.Supported,
+            ["DiscoveryClosure"] = FeatureExpectation.Supported,
+            ["DiscoveryPartial"] = FeatureExpectation.Supported,
+            ["DiscoveryStrict"] = FeatureExpectation.Supported,
+            ["DiscoveryRoundTrip"] = FeatureExpectation.Supported,
             ["NativeVarcharKey"] = FeatureExpectation.Supported,
             ["NativeCharKey"] = FeatureExpectation.Supported,
-            ["ExpressionIndexDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["FilteredIndexDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["AggregateViewDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["MissingReferenceDiagnostic"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
-            ["DiagnosticDetails"] = new(ExpectedOutcome.NoDiscovery,"The published provider does not register SchemaDiscoveryCapability; SDI001 is required."),
+            ["ExpressionIndexDiagnostic"] = FeatureExpectation.Supported,
+            ["FilteredIndexDiagnostic"] = new(ExpectedOutcome.DatabaseRejects,"Predicate-filtered indexes are not supported.","1064"),
+            ["AggregateViewDiagnostic"] = FeatureExpectation.Supported,
+            ["MissingReferenceDiagnostic"] = FeatureExpectation.Supported,
+            ["DiagnosticDetails"] = FeatureExpectation.Supported,
             ["PublicDeployment"] = FeatureExpectation.Supported,
             ["FluentDeployment"] = FeatureExpectation.Supported,
             ["CleanupAfterFailure"] = FeatureExpectation.Supported,
         };
     protected override void ExecuteScript(DbConnection connection,string script) => QaSql.Execute(connection,script);
     protected override string DatabaseErrorCode(DbException exception) => ((MySqlException)exception).Number.ToString();
+    // Native UNIQUE indexes are discovered as constraints; DiscoveryUnique verifies them.
+    protected override bool DiscoveryIndexIsUnique => false;
+    protected override DiscoveryOptions DiscoveryScope(string name) => new() { Databases = [name] };
     protected override string CurrentSchema(DbConnection connection) => connection.Database;
     protected override DatabaseObjectName QualifiedName(DbConnection connection,string name) => new(name,database:CurrentSchema(connection));
-    protected override ISchemaMetadataReader? CreateMetadataReader() => null;
-    protected override int? ExpectedDiscoveredStringLength => null;
+    protected override ISchemaMetadataReader? CreateMetadataReader() => new MySqlMetadataReader();
+    protected override int? ExpectedDiscoveredStringLength => 40;
     protected override GeneratedColumnStorage DiscoveryGenerationStorage => GeneratedColumnStorage.Stored;
     protected override PublicDatabase CreatePublicDatabase()
     {

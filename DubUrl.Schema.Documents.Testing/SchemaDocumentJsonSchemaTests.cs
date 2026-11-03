@@ -182,7 +182,7 @@ public class SchemaDocumentJsonSchemaTests
 
         var script = new SchemaScriptRenderer(dialectBuilder.Build().Get<SqliteDialect>()).Render(domain);
 
-        Assert.That(script, Does.Contain("is_active INTEGER NOT NULL DEFAULT true"));
+        Assert.That(script, Does.Contain("\"is_active\" INTEGER NOT NULL DEFAULT true"));
     }
 
     private static EvaluationResults Evaluate(string source)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -20,5 +20,6 @@ public interface IIndexColumnCollectionBuilder
 
 public interface IIndexBuilder
 {
+    IIndexBuilder WithStructure(DubUrl.Querying.Dialects.SchemaIndexStructure structure);
     Index Build();
 }

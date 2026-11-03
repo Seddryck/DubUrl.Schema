@@ -30,19 +30,35 @@ A passing scenario means the declared behavior was verified, not that every engi
 | Provider | Current expectations verified by the shared tests |
 |---|---|
 | PostgreSQL | Portable virtual generated columns are rejected. |
-| SQLite | Comments have no native storage; portable identity/regex rendering is rejected; generated-expression/check/comment metadata has explicit diagnostics. The published unquoted identifier formatter rejects punctuation; discovered Schema qualifiers cannot currently be rendered back. String length is not enforced. |
+| SQLite | Comments have no native storage and regex rendering is rejected. Default integer identities deploy through the public API; check/generated discovery and native bounded keys have positive coverage. Main/attached database identities, literal object names and supported discovery round trips are verified. String length is not enforced. |
 | DuckDB | Stored generated columns and filtered indexes are rejected; declared string length and index sort direction are not retained. |
 | SQL Server | Regex rendering is unavailable; expression indexes require computed columns. The adapter executes CREATE VIEW in its required separate batch, while comments stay together to detect batch-variable collisions. |
 | Oracle | The published dialect lacks comment, identity, generated-column, regex and portable-view renderers; it registers no schema discovery reader. Ordinary native catalog observations and supported deployment/index behavior are still tested. |
-| MySQL | Custom identity seed/increment is rejected; the provider registers no discovery reader. All three bounded-key forms, constraints and persisted comments remain tested. |
-| SingleStore | Foreign keys and portable UNIQUE declarations lacking shard-key configuration are rejected with specific codes; MySQL generated-column syntax is rejected. The pinned engine accepts but ignores CHECK clauses and table comments, while column comments persist. No discovery reader is registered. |
+| MySQL | Native discovery verifies facets, keys, defaults, generation, checks, comments, BTREE indexes, views, database filtering, closure and strict/partial behavior. UNIQUE indexes are represented as constraints without duplicate backing indexes. Custom per-column identity settings and filtered indexes are rejected. |
+| SingleStore | Comments, generated columns and supported discovery are verified. Key/index discovery explicitly selects shard-compatible rowstore layouts. Numeric BTREE direction is checked against native definitions. Foreign keys, table-level CHECK DDL, expression/filtered indexes, custom identities and virtual generation retain explicit rejection cases. |
 
 Where discovery is absent, every discovery scenario verifies the real provider has no SchemaDiscoveryCapability and SchemaInspector returns SDI001. Where a reader exists, tests execute live DDL, read actual metadata, and assert values/coverage/diagnostic codes. This does not substitute fabricated metadata for a missing reader.
 
-Shared_DiscoveryUnique positively verifies named single and composite UNIQUE constraints for PostgreSQL, SQLite, DuckDB and SQL Server, including column order, complete strict inspection and no duplicated backing indexes. Oracle, SingleStore and MySQL retain the absent-reader contract until their providers register discovery readers.
+Shared_DiscoveryUnique positively verifies named single and composite UNIQUE constraints for PostgreSQL, SQLite, DuckDB and SQL Server, including column order, complete strict inspection and no duplicated backing indexes. MySQL and SingleStore now also verify native unique constraints without duplicate backing indexes; only Oracle retains the absent-reader contract.
 
 ## Framework and cleanup guarantees
 
 The runner accepts only net10.0. A global NUnit setup guard also prevents every provider fixture, including retained regressions, from touching a database under another runtime. QA projects still compile with the multi-target solution; the CI database matrix contains .NET 10 only.
 
 Each shared scenario opens its own connection, uses unique object names, records partially created objects, and verifies cleanup in finally. Embedded public-deployment tests use disposable files and close provider pools before deleting SQLite files. Container logs redact generated passwords and all provisioned containers/volumes are removed. MySQL readiness requires an authenticated TCP query against the initialized DubUrl database; the temporary socket-only bootstrap server cannot satisfy it.
+
+The namespace, column-definition and table/key contracts are available in
+published DubUrl 0.57.1. MySQL and SingleStore use their registered native readers
+and database-qualified discovery filters. MySQL ordinary BTREE direction and
+supported key/default/check/generation/comment/view metadata are checked
+positively. SingleStore uses shard-compatible rowstore declarations for unique
+keys and primary keys. Numeric BTREE direction is verified by SHOW CREATE TABLE
+and the native reader, without treating character collations as direction flags.
+Native UNIQUE indexes are read as constraints and tested separately from ordinary
+indexes. Its foreign keys, table-level CHECK declarations, expression
+indexes, predicate-filtered indexes and custom identity settings retain explicit
+engine/renderer limitation assertions. Neither provider claims discovery is absent.
+
+Use `-ResultsDirectory artifacts/results/<run-name>/<database>` to retain distinct
+QA attempts without deleting earlier reports. Omitting it preserves the existing
+results location and refusal to overwrite prior runs.

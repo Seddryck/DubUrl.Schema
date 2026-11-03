@@ -19,6 +19,7 @@ public abstract class ProviderContract : SchemaContract
     protected abstract void ExecuteScript(DbConnection connection, string script);
     protected abstract string DatabaseErrorCode(DbException exception);
     protected abstract string CurrentSchema(DbConnection connection);
+    protected virtual DiscoveryOptions DiscoveryScope(string name) => new() { Schemas = [name] };
     protected abstract DatabaseObjectName QualifiedName(DbConnection connection, string name);
     protected abstract CommentFact ReadComments(DbConnection connection, DatabaseObjectName table);
     protected abstract IReadOnlyList<ColumnFact> ReadColumns(DbConnection connection, DatabaseObjectName table);
@@ -313,13 +314,15 @@ public abstract class ProviderContract : SchemaContract
         foreach (var column in new[] { "none", "empty", "blank" }) Assert.That(observed.Columns.GetValueOrDefault(column), Is.Null.Or.Empty);
     }
 
+    protected virtual TablePhysicalOptions? PhysicalOptions(string scenario) => null;
+
     private void Keys(string scenario)
     {
         var composite = scenario.StartsWith("Composite"); var unique = scenario.EndsWith("Unique");
         var native = scenario.StartsWith("Native") ? new NativeDatabaseType(scenario == "NativeVarcharKey" ? "VARCHAR" : "CHAR") : null;
         Column first = native is null ? Id("b") : new VarLengthColumn("b", DbType.AnsiString, 20, nativeType: native);
         var second = Id("a"); var key = composite ? new[] { first, second } : new[] { first };
-        var table = new Table(Name("key"), [first, second], unique ? [new UniquenessConstraint(key)] : [new PrimaryKeyConstraint(key)]);
+        var table = new Table(new DatabaseObjectName(Name("key")), [first, second], unique ? [new UniquenessConstraint(key)] : [new PrimaryKeyConstraint(key)], null, PhysicalOptions(scenario));
         if (!Deploy(new([table]))) return;
         var value = native is null ? "1" : "'STD'";
         Execute($"INSERT INTO {Q(table.Identity)} VALUES ({value},2)");
@@ -374,7 +377,7 @@ public abstract class ProviderContract : SchemaContract
     }
     private void Indexes(string scenario)
     {
-        var table = new Table(Name("indexed"), [Id("b"), Id("a")]); var composite = scenario is "CompositeIndex" or "IndexDirection";
+        var table = new Table(new DatabaseObjectName(Name("indexed")), [Id("b"), Id("a")], null, null, PhysicalOptions(scenario)); var composite = scenario is "CompositeIndex" or "IndexDirection";
         var index = new Index(Name("idx"), table.Name, composite ? [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)] : [new IndexColumn("b")], scenario == "UniqueIndex");
         if (!Deploy(new([table], [index]))) return;
         var actual = ReadIndexes(database, table.Identity).Where(i => i.Name == index.Name).OrderBy(i => i.Ordinal).ToArray();
@@ -414,15 +417,19 @@ public abstract class ProviderContract : SchemaContract
     private async Task<SchemaInspectionResult> Inspect(SchemaFeature[] features, Table[]? selected = null, bool partial = true, bool closure = false)
     {
         var reader = CreateMetadataReader() ?? throw new InvalidOperationException("A supported discovery test requires a real reader.");
-        var result = await new SchemaInspector().InspectAsync(database, reader, new DiscoveryOptions
+        var result = await new SchemaInspector().InspectAsync(database, reader, DiscoveryScope(CurrentSchema(database)) with
         {
-            Schemas = [CurrentSchema(database)],
-            Tables = selected?.Select(t => new MetadataName(t.Name, CurrentSchema(database))).ToArray() ?? [],
+            Tables = selected?.Select(t => DiscoveryName(t.Name)).ToArray() ?? [],
             Features = features,
             AllowPartial = partial,
             IncludeReferencedTables = closure
         });
         Assert.That(result.Diagnostics.Select(d => d.Code), Does.Not.Contain("SDI002"), "Catalog access must succeed."); return result;
+    }
+    private MetadataName DiscoveryName(string name)
+    {
+        var identity = QualifiedName(database, name);
+        return new(identity.Name, identity.Schema, identity.Database, identity.Catalog);
     }
     private async Task Discovery(string scenario)
     {
@@ -435,10 +442,16 @@ public abstract class ProviderContract : SchemaContract
         await DiscoverTable(scenario, basic);
     }
 
+    protected virtual bool DiscoveryIndexIsUnique => true;
+    protected virtual TablePhysicalOptions? DiscoveryPhysicalOptions(string scenario) => null;
+    protected virtual Constraint[] DiscoveryUniqueConstraints(Column[] columns)
+        => [new UniquenessConstraint([columns[1], columns[0]], Name("unique_pair")),
+            new UniquenessConstraint([columns[2]], Name("unique_title"))];
+
     private async Task DiscoverTable(string scenario, SchemaFeature[] basic)
     {
         var table = CreateDiscoveryTable(scenario);
-        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], true) } : [];
+        var indexes = scenario == "DiscoveryIndexes" ? new[] { new Index(Name("idx"), table.Name, [new IndexColumn("b", IndexSortDirection.Descending), new IndexColumn("a", IndexSortDirection.Ascending)], DiscoveryIndexIsUnique) } : [];
         var portable = new View(Name("portable"), new ViewQuery(table.Identity, new ViewProjection(new ColumnIdentityExpression("b"), "label")));
         if (!DeployDiscoveryTable(scenario, table, indexes, portable)) return;
         if (scenario is "ExpressionIndexDiagnostic" or "FilteredIndexDiagnostic")
@@ -503,13 +516,13 @@ public abstract class ProviderContract : SchemaContract
         var columns = new Column[] { a, b, Text(), new NumericColumn("amount", DbType.Decimal, 10, 2) }; Constraint[] constraints = [];
         if (scenario == "DiscoveryFacets") columns = [new Column("b", DbType.Int32, constraints: [new NotNullableConstraint()]), Text(), new NumericColumn("amount", DbType.Decimal, 10, 2)];
         if (scenario == "DiscoveryPrimaryKey") constraints = [new PrimaryKeyConstraint([a, b])];
-        if (scenario == "DiscoveryUnique") constraints = [new UniquenessConstraint([b, a], Name("unique_pair")), new UniquenessConstraint([columns[2]], Name("unique_title"))];
+        if (scenario == "DiscoveryUnique") constraints = DiscoveryUniqueConstraints(columns);
         if (scenario == "DiscoveryDefaults") columns = [a, new VarLengthColumn("title", DbType.AnsiString, 40, defaultValue: "hé"), new NumericColumn("amount", DbType.Decimal, 10, 2, defaultValue: 12.25m)];
         if (scenario == "DiscoveryIdentity") columns = [new Column("id", DbType.Int32, constraints: [new PrimaryKeyConstraint()], generation: new IdentityColumnGeneration(10, 2)), Id("payload")];
         if (scenario == "DiscoveryChecks") constraints = [new CheckConstraint(new ColumnIdentityExpression("b"), ">=", new ValueExpression(0))];
         if (scenario == "DiscoveryGeneration") columns = [a, new Column("copy", DbType.Int32, generation: new GeneratedColumnGeneration(new ColumnIdentityExpression("b"), DiscoveryGenerationStorage))];
         if (scenario == "DiscoveryComments") columns = [Id(), Text("title", "column comment")];
-        var table = new Table(Name("discovery"), columns, constraints, scenario == "DiscoveryComments" ? "table comment" : null);
+        var table = new Table(new DatabaseObjectName(Name("discovery")), columns, constraints, scenario == "DiscoveryComments" ? "table comment" : null, DiscoveryPhysicalOptions(scenario));
         return table;
     }
 
@@ -564,10 +577,9 @@ public abstract class ProviderContract : SchemaContract
             Assert.That(inspected.Coverage[SchemaFeature.UniqueConstraints], Is.EqualTo(MetadataCoverage.Available));
             Assert.That(inspected.Diagnostics, Is.Empty);
             Assert.That(inspected.Schema.Indexes, Is.Empty);
-            var metadata = await CreateMetadataReader()!.ReadAsync(database, new DiscoveryOptions
+            var metadata = await CreateMetadataReader()!.ReadAsync(database, DiscoveryScope(CurrentSchema(database)) with
             {
-                Schemas = [CurrentSchema(database)],
-                Tables = [new MetadataName(table.Name, CurrentSchema(database))],
+                Tables = [DiscoveryName(table.Name)],
                 Features = [.. basic, SchemaFeature.UniqueConstraints]
             }, CancellationToken.None);
             var keys = metadata.Tables.Single(t => t.Identity.Name == table.Name).UniqueConstraints;
@@ -580,13 +592,13 @@ public abstract class ProviderContract : SchemaContract
         {
             case "DiscoveryIndexes":
                 var ix = inspected.Schema.Indexes.Values.Single(i => i.Name == indexes[0].Name);
-                Assert.That(ix.IsUnique, Is.True); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
+                Assert.That(ix.IsUnique, Is.EqualTo(indexes[0].IsUnique)); Assert.That(ix.Columns.Keys, Is.EqualTo(new[] { "b", "a" }));
                 Assert.That(ix.Columns.Values.Select(c => c.SortDirection), Is.EqualTo(expectation.Outcome == ExpectedOutcome.NotEnforced ? new IndexSortDirection?[] { null, null } : new IndexSortDirection?[] { IndexSortDirection.Descending, IndexSortDirection.Ascending })); break;
             case "DiscoveryViews": Assert.That(inspected.Schema.Views.Values.Single(v => v.Name == portable.Name).Query.Projections.Single().Alias, Is.EqualTo("label")); break;
             case "DiscoveryTableFilter": Assert.That(inspected.Schema.Tables.Values.Select(t => t.Name), Is.EqualTo(new[] { table.Name })); break;
             case "DiscoverySchemaFilter":
-                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity.Schema == CurrentSchema(database)), Is.True);
-                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, new DiscoveryOptions { Schemas = [Name("absent")], Features = basic });
+                Assert.That(inspected.Schema.Tables.Values.All(t => t.Identity == QualifiedName(database, t.Name)), Is.True);
+                var excluded = await new SchemaInspector().InspectAsync(database, CreateMetadataReader()!, DiscoveryScope(Name("absent")) with { Features = basic });
                 Assert.That(excluded.Schema!.Tables, Is.Empty); break;
             case "DiscoveryRoundTrip":
                 Execute(DropTableSql(table.Name)); if (!Deploy(new(inspected.Schema.Tables.Values.ToArray()))) return;

@@ -56,8 +56,8 @@ public class ProviderSchemaSqlRendererTests
     [TestCase("questdb", false, null)]
     [TestCase("mysql", true, "INTEGER GENERATED ALWAYS AS (7) STORED")]
     [TestCase("mysql", false, "INTEGER GENERATED ALWAYS AS (7) VIRTUAL")]
-    [TestCase("singlestore", true, "INTEGER GENERATED ALWAYS AS (7) STORED")]
-    [TestCase("singlestore", false, "INTEGER GENERATED ALWAYS AS (7) VIRTUAL")]
+    [TestCase("singlestore", true, "AS (7) PERSISTED INTEGER")]
+    [TestCase("singlestore", false, null)]
     [TestCase("sqlite", true, "INTEGER GENERATED ALWAYS AS (7) STORED")]
     [TestCase("sqlite", false, "INTEGER GENERATED ALWAYS AS (7) VIRTUAL")]
     [TestCase("duckdb", true, null)]
@@ -99,7 +99,7 @@ public class ProviderSchemaSqlRendererTests
     [TestCase("questdb", null, null, "sales", "\"sales\".\"Customer\"")]
     [TestCase("mysql", null, "store", null, "`store`.`Customer`")]
     [TestCase("singlestore", null, "store", null, "`store`.`Customer`")]
-    [TestCase("sqlite", null, "store", null, "store.Customer")]
+    [TestCase("sqlite", null, "store", null, "\"store\".\"Customer\"")]
     [TestCase("duckdb", null, "store", "sales", "store.sales.Customer")]
     public void QualifiedNames_PreserveProviderFormatting(string alias, string? catalog, string? database, string? schema, string expected)
     {
