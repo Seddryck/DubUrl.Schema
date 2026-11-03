@@ -6,6 +6,7 @@
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="5.1.0" />
     <PackageReference Include="DubUrl.Provider.DuckDb" Version="$(DubUrlVersion)" />
+    <PackageReference Include="DubUrl.Provider.DuckDb.Native" Version="$(DubUrlVersion)" />
     <PackageReference Include="DuckDB.NET.Data" Version="1.5.6" />
     <PackageReference Include="DuckDB.NET.Bindings.Full" Version="1.5.6" />
     <ProjectReference Include="../../DubUrl.Schema.QA/DubUrl.Schema.QA.csproj" />
