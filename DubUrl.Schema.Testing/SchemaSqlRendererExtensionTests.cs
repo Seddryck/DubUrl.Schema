@@ -47,10 +47,16 @@ public class SchemaSqlRendererExtensionTests
             Assert.That(text.Split("EXPLICIT_UNIQUE").Length, Is.EqualTo(2));
             Assert.That(commands.Count(command => command.CommandText.Contains("EXPLICIT_UNIQUE", StringComparison.Ordinal)), Is.EqualTo(1));
             Assert.That(commands.Select(command => command.Operation), Is.EqualTo(useIndex
-                ? new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.ForeignKey }
+                ? new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.ForeignKey }
                 : new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey }));
             Assert.That(text.IndexOf("EXPLICIT_UNIQUE", StringComparison.Ordinal),
                 Is.LessThan(text.IndexOf("FOREIGN KEY", StringComparison.Ordinal)));
+            if (useIndex)
+            {
+                var indexSql = commands.Where(command => command.Operation == SchemaSqlOperation.CreateIndex)
+                    .Select(command => command.CommandText);
+                Assert.That(text, Does.Contain(string.Join(Environment.NewLine, indexSql)));
+            }
         });
     }
 
@@ -111,7 +117,11 @@ public class SchemaSqlRendererExtensionTests
             Context = context;
             var policy = mismatch ? UniqueNullPolicy.Native : context.Constraint.NullPolicy;
             return useIndex
-                ? new UniqueIndexPlan(policy, canReference, [new(new(backingName ?? context.SuggestedName), "CREATE EXPLICIT_UNIQUE INDEX;")])
+                ? new UniqueIndexPlan(policy, canReference,
+                    [
+                        new(new(backingName ?? context.SuggestedName), "CREATE EXPLICIT_UNIQUE INDEX WHERE [B] <> 'a&b';"),
+                        new(new(context.SuggestedName + "_aux"), "CREATE AUXILIARY_UNIQUE INDEX;")
+                    ])
                 : new NativeUniqueConstraintPlan(policy, canReference, "EXPLICIT_UNIQUE ([B], [A])");
         }
 

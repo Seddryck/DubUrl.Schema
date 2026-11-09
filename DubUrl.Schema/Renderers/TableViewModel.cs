@@ -25,7 +25,7 @@ public class TableViewModel
     internal bool RequiresExplicitUniquePlan { get; }
     internal bool ExplicitUniqueConstraintsPlanned { get; set; }
     public List<string> ExplicitUniqueDefinitions { get; } = [];
-    internal List<DubUrl.Querying.Dialects.SchemaSqlCommand> ExplicitUniqueIndexes { get; } = [];
+    public List<DubUrl.Querying.Dialects.SchemaSqlCommand> ExplicitUniqueIndexes { get; } = [];
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }
     public CheckConstraint[] Checks { get; }

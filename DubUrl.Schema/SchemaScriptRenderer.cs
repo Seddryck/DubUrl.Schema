@@ -150,7 +150,8 @@ public class SchemaScriptRenderer
                     commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
                 }
             }
-            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } } }), SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } }, PlanCommandsSeparately = true }),
+                SchemaSqlOperation.CreateTable, table.Identity.ToString()));
             commands.AddRange(table.ExplicitUniqueIndexes);
         }
     }
