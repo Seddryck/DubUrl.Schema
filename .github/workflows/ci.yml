@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       duburl_version:
-        description: Optional DubUrl version override; defaults to latest stable (never publishes)
+        description: Optional DubUrl version override. Defaults to the latest complete stable set. Manual runs never publish.
         type: string
         default: ''
 permissions:
