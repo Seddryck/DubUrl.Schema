@@ -5,11 +5,13 @@ namespace DubUrl.Schema.Renderers;
 
 public class CreateIndexRenderer : RendererEngine
 {
+    internal static readonly string StatementTemplate = $"{typeof(CreateIndexRenderer).Namespace}.Templates.CreateIndex.sql.hbs";
+
     public CreateIndexRenderer(IDialect dialect)
         : this(CreateIndexHelpers(dialect))
     { }
 
-    private static IDictionary<string, Func<object?, string>> CreateIndexHelpers(IDialect dialect)
+    internal static IDictionary<string, Func<object?, string>> CreateIndexHelpers(IDialect dialect)
     {
         var helpers = CreateHelpers(dialect);
         helpers.Add("indexname", value =>
@@ -28,6 +30,7 @@ public class CreateIndexRenderer : RendererEngine
     protected CreateIndexRenderer(IDictionary<string, Func<object?, string>> helpers)
         : base(typeof(CreateIndexRenderer).Assembly, $"{typeof(CreateIndexRenderer).Namespace}.Templates.CreateIndexes.sql.hbs")
     {
+        AddPartial("createIndex", StatementTemplate);
         if (!helpers.ContainsKey("indextable"))
             AddFormatter("indextable", helpers["objectname"]);
         if (!helpers.ContainsKey("indexname"))

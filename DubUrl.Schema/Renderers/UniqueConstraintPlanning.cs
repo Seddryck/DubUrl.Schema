@@ -74,15 +74,22 @@ internal static class UniqueConstraintPlanning
                 var indexes = indexPlan.Indexes.ToArray();
                 if (key.Name is not null && !indexes.Any(index => index?.Identity?.Name == key.Name))
                     throw new NotSupportedException($"{label} requires a backing index that preserves the declared name.");
+                var columns = key.Columns.Select(column => new IndexColumn(column.Name)).ToArray();
                 foreach (var index in indexes)
                 {
-                    if (index?.Identity is null || string.IsNullOrWhiteSpace(index.CommandText)
+                    if (index?.Identity is null
+                        || (index.FilterPredicate is not null && string.IsNullOrWhiteSpace(index.FilterPredicate))
+                        || (index.KeySuffix is not null && string.IsNullOrWhiteSpace(index.KeySuffix))
                         || !SameNamespace(index.Identity, table.Identity))
                         throw new NotSupportedException($"{label} has an invalid backing index plan.");
                     if ((model is not null && !indexNames.Add(index.Identity)) || !localIndexNames.Add(index.Identity.Name)
                         || (index.Identity.Name != key.Name && declaredNames.Contains(index.Identity.Name)))
                         throw new NotSupportedException($"{label} has an ambiguous backing index name '{index.Identity}'.");
-                    model?.ExplicitUniqueIndexes.Add(new(index.CommandText, SchemaSqlOperation.CreateIndex, index.Identity.ToString()));
+                    model?.ExplicitUniqueIndexes.Add(new IndexViewModel(new Index(index.Identity, table.Identity, columns, true))
+                    {
+                        FilterPredicate = index.FilterPredicate,
+                        KeySuffix = index.KeySuffix
+                    });
                 }
                 return;
             default:

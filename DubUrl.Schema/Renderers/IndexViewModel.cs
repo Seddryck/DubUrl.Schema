@@ -17,6 +17,8 @@ public class IndexViewModel
     public DatabaseObjectName TableIdentity { get; }
     public IndexColumnViewModel[] Columns { get; }
     public bool IsUnique { get; }
+    public string? FilterPredicate { get; internal set; }
+    public string? KeySuffix { get; internal set; }
 
     public IndexViewModel(Index index)
     {

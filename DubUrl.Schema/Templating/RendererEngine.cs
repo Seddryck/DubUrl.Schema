@@ -57,9 +57,20 @@ public abstract class RendererEngine
     protected void AddFormatter(string functionName, Func<object?, string> function)
         => Engine.AddFormatter(functionName, function);
 
+    protected void AddPartial(string name, string templatePath)
+        => Engine.AddPartial(name, () =>
+        {
+            using var stream = OpenTemplate(templatePath);
+            using var reader = new StreamReader(stream);
+            return reader.ReadToEnd();
+        });
+
+    private Stream OpenTemplate(string path)
+        => Assembly.GetManifestResourceStream(path) ?? throw new FileNotFoundException(path);
+
     public string Render(object value)
     {
-        using (var stream = Assembly.GetManifestResourceStream(TemplatePath) ?? throw new FileNotFoundException(TemplatePath))
+        using (var stream = OpenTemplate(TemplatePath))
         return Engine.Render(stream, value).ReplaceLineEndings(Environment.NewLine);
     }
 }

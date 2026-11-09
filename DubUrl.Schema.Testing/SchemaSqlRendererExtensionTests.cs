@@ -44,18 +44,28 @@ public class SchemaSqlRendererExtensionTests
             Assert.That(provider.Context.SuggestedName, Is.EqualTo("UQ_Pair_2"));
             Assert.That(provider.LegacyKeys, Is.EqualTo(new[] { "Legacy" }));
             Assert.That(text.Split("LEGACY_UNIQUE").Length, Is.EqualTo(2));
-            Assert.That(text.Split("EXPLICIT_UNIQUE").Length, Is.EqualTo(2));
-            Assert.That(commands.Count(command => command.CommandText.Contains("EXPLICIT_UNIQUE", StringComparison.Ordinal)), Is.EqualTo(1));
             Assert.That(commands.Select(command => command.Operation), Is.EqualTo(useIndex
                 ? new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.ForeignKey }
                 : new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey }));
-            Assert.That(text.IndexOf("EXPLICIT_UNIQUE", StringComparison.Ordinal),
+            var marker = useIndex ? "CREATE UNIQUE INDEX" : "EXPLICIT_UNIQUE";
+            Assert.That(text.IndexOf(marker, StringComparison.Ordinal),
                 Is.LessThan(text.IndexOf("FOREIGN KEY", StringComparison.Ordinal)));
             if (useIndex)
             {
                 var indexSql = commands.Where(command => command.Operation == SchemaSqlOperation.CreateIndex)
-                    .Select(command => command.CommandText);
-                Assert.That(text, Does.Contain(string.Join(Environment.NewLine, indexSql)));
+                    .Select(command => command.CommandText).ToArray();
+                Assert.That(indexSql[0], Does.Contain("CREATE UNIQUE INDEX [UQ_Pair_2] ON [Pair] (")
+                    .And.Contain($"    [B],{Environment.NewLine}    [A]")
+                    .And.Contain(") PROVIDER_KEY_OPTION WHERE [B] <> 'a&b';"));
+                Assert.That(indexSql[1], Does.Contain("CREATE UNIQUE INDEX [UQ_Pair_2_aux] ON [Pair] (")
+                    .And.Contain(") WHERE [B] IS NULL;"));
+                Assert.That(text, Does.Contain(string.Concat(indexSql)));
+                Assert.That(text.Split("CREATE UNIQUE INDEX").Length, Is.EqualTo(3));
+            }
+            else
+            {
+                Assert.That(text.Split("EXPLICIT_UNIQUE").Length, Is.EqualTo(2));
+                Assert.That(commands.Count(command => command.CommandText.Contains("EXPLICIT_UNIQUE", StringComparison.Ordinal)), Is.EqualTo(1));
             }
         });
     }
@@ -119,8 +129,8 @@ public class SchemaSqlRendererExtensionTests
             return useIndex
                 ? new UniqueIndexPlan(policy, canReference,
                     [
-                        new(new(backingName ?? context.SuggestedName), "CREATE EXPLICIT_UNIQUE INDEX WHERE [B] <> 'a&b';"),
-                        new(new(context.SuggestedName + "_aux"), "CREATE AUXILIARY_UNIQUE INDEX;")
+                        new(new(backingName ?? context.SuggestedName), "[B] <> 'a&b'", "PROVIDER_KEY_OPTION"),
+                        new(new(context.SuggestedName + "_aux"), "[B] IS NULL")
                     ])
                 : new NativeUniqueConstraintPlan(policy, canReference, "EXPLICIT_UNIQUE ([B], [A])");
         }

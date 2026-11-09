@@ -21,8 +21,12 @@ public abstract record UniqueConstraintPlan(UniqueNullPolicy NullPolicy, bool Ca
 public sealed record NativeUniqueConstraintPlan(UniqueNullPolicy NullPolicy, bool CanReferenceWithForeignKey, string Definition)
     : UniqueConstraintPlan(NullPolicy, CanReferenceWithForeignKey);
 
-/// <summary>Ordered, trusted index commands that together enforce the declaration.</summary>
+/// <summary>Ordered backing indexes that together enforce the declaration.</summary>
 public sealed record UniqueIndexPlan(UniqueNullPolicy NullPolicy, bool CanReferenceWithForeignKey,
-    IReadOnlyList<UniqueIndexCommand> Indexes) : UniqueConstraintPlan(NullPolicy, CanReferenceWithForeignKey);
+    IReadOnlyList<UniqueIndexDefinition> Indexes) : UniqueConstraintPlan(NullPolicy, CanReferenceWithForeignKey);
 
-public sealed record UniqueIndexCommand(DatabaseObjectName Identity, string CommandText);
+/// <summary>A unique index over the declaration's ordered columns.</summary>
+/// <param name="Identity">The backing index's qualified identity.</param>
+/// <param name="FilterPredicate">An optional trusted provider expression, without the WHERE keyword.</param>
+/// <param name="KeySuffix">An optional trusted provider clause following the key columns and preceding WHERE.</param>
+public sealed record UniqueIndexDefinition(DatabaseObjectName Identity, string? FilterPredicate = null, string? KeySuffix = null);

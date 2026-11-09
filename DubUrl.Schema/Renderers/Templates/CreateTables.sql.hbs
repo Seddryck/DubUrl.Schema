@@ -56,7 +56,7 @@
 ){{tabledescription this}};
 {{#unless @root.PlanCommandsSeparately}}
 {{#each ExplicitUniqueIndexes}}
-{{{CommandText}}}
+{{> createIndex}}
 {{/each}}
 {{/unless}}
 {{/each}}

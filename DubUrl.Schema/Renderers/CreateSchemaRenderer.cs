@@ -41,7 +41,7 @@ public class CreateSchemaRenderer : RendererEngine
 
     private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting, bool includeIdentityPrerequisites)
     {
-        var helpers = CreateHelpers(dialect);
+        var helpers = CreateIndexRenderer.CreateIndexHelpers(dialect);
         helpers.Add("identityprerequisites", value =>
         {
             if (value is TableViewModel table)
@@ -198,6 +198,7 @@ public class CreateSchemaRenderer : RendererEngine
     protected CreateSchemaRenderer(IDbTypeMapper typeMapper, ISqlFunctionMapper sqlFunctionMapper, IDictionary<string, Func<object?, string>> helpers)
         : base(typeof(CreateSchemaRenderer).Assembly, $"{typeof(CreateSchemaRenderer).Namespace}.Templates.CreateTables.sql.hbs")
     {
+        AddPartial("createIndex", CreateIndexRenderer.StatementTemplate);
         AddFormatter("tabledescription", _ => "");
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");
