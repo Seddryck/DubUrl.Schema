@@ -26,11 +26,14 @@
 )
 {{/if~}}
 {{#each UniqueConstraints}}
-    , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}UNIQUE ({{#each Columns}}{{identity Name}}{{#unless @last}}, {{/unless}}{{/each}})
+    , {{> uniqueConstraint~}}
 {{/each~}}
 {{/if~}}
 {{#each ProviderDefinitions}}
     , {{{this}}}
+{{/each~}}
+{{#each ExplicitUniqueConstraints}}
+    , {{> uniqueConstraint~}}
 {{/each~}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
@@ -51,4 +54,9 @@
 {{/each}}
 {{/if~}}
 ){{tabledescription this}};
+{{#unless @root.PlanCommandsSeparately}}
+{{#each ExplicitUniqueIndexes}}
+{{> createIndex}}
+{{/each}}
+{{/unless}}
 {{/each}}

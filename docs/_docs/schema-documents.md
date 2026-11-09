@@ -5,7 +5,7 @@ nav_order: 3
 permalink: /schema-documents/
 ---
 
-DubUrl schema documents describe a database schema in ordered, provider-independent JSON or YAML. Version 1 covers tables, columns, primary and foreign keys, check constraints, generated columns, indexes, and views. It does not include column-level primary-key flags.
+DubUrl schema documents describe a database schema in ordered, provider-independent JSON or YAML. Version 1 covers tables, columns, primary and foreign keys, unique tuples, check constraints, generated columns, indexes, and views. Primary keys use the table-level form.
 
 Views use a deliberately small structured query model: one table-or-view source and an ordered list of column, value, or function projections with optional aliases. View dependencies are derived from their sources, so creation and removal can be rendered in dependency-safe order. Raw SQL, joins, aggregation, grouping, ordering, pagination, common table expressions, and set operations are not part of version 1.
 
@@ -21,9 +21,14 @@ Declarations are ordered. That order is retained for tables, columns, constraint
 | Tables | Contain ordered columns, one optional table-level primary key, table checks, and named foreign keys. |
 | Columns | Support logical type, length or precision/scale, nullability, uniqueness, typed default, description, native-type fallback, identity or generated value, and column checks. |
 | Primary keys | Are table-level, named or unnamed, single-column or composite, with ordered unique column references. |
+| Unique tuples | Use optional table-level `uniqueConstraints` with ordered `columns`, an optional `name`, and an optional `nullPolicy`. |
 | Checks | Support comparison, membership, and regular-expression forms with structured expressions and explicit null behavior. |
 | Indexes | Have their own qualified identity, target a table, can be unique, and preserve per-column ascending or descending direction. |
 | Views | Have one table-or-view source and ordered structured projections with optional aliases. |
+
+Column-level `unique: true` and tuple declarations with an omitted or `native` policy use the database's native behavior. With `nulls-distinct`, the uniqueness rule applies only when every member is non-null. With `nulls-not-distinct`, nulls compare equal at the same position and non-null members compare normally. For example, two tuples `(null, 1)` conflict under `nulls-not-distinct`, while `(null, 1)` and `(null, 2)` can coexist.
+
+The v1 addition is optional. It leaves the meaning of existing documents intact. An explicit policy requires provider support when rendering or deploying. A tuple equivalent to the primary key stays in the document and shares the primary key's enforcement in SQL.
 
 `length` applies only to string and binary types. `precision` and `scale` apply only to `currency`, `decimal`, and `varnumeric`, and scale requires precision. Identity generation applies only to integer types. Length and precision are mutually exclusive; default, identity, and generated values are mutually exclusive.
 

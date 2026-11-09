@@ -1,0 +1,5 @@
+CREATE {{#if IsUnique}}UNIQUE {{/if}}INDEX {{indexname this}} ON {{indextable TableIdentity}} (
+{{#each Columns}}
+    {{identity Name}}{{#if IsAscending}} ASC{{/if}}{{#if IsDescending}} DESC{{/if}}{{#unless @last}},{{/unless}}
+{{/each}}
+){{#if KeySuffix}} {{{KeySuffix}}}{{/if}}{{#if FilterPredicate}} WHERE {{{FilterPredicate}}}{{/if}};

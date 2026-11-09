@@ -69,6 +69,12 @@
           "minItems": 1
         },
         "primaryKey": { "description": "The canonical table-level primary key.", "$ref": "#/$defs/primaryKey" },
+        "uniqueConstraints": {
+          "description": "Named or unnamed UNIQUE tuples in declaration order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/uniqueConstraint" },
+          "default": []
+        },
         "checks": {
           "description": "Table-level check constraints evaluated in declaration order.",
           "type": "array",
@@ -223,6 +229,16 @@
           "not": { "anyOf": [{ "required": ["left"] }, { "required": ["operator"] }, { "required": ["right"] }, { "required": ["values"] }] }
         }
       ]
+    },
+    "uniqueConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["columns"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "columns": { "description": "Column names in tuple order.", "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "uniqueItems": true },
+        "nullPolicy": { "description": "Tuple comparison when any member is null.", "enum": ["native", "nulls-distinct", "nulls-not-distinct"], "default": "native" }
+      }
     },
     "primaryKey": {
       "description": "A canonical table-level primary key, including composite keys.",

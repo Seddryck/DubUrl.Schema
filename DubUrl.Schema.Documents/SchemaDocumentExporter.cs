@@ -72,6 +72,13 @@ public sealed class SchemaDocumentExporter
                 case PrimaryKeyConstraint pk:
                     if (result.PrimaryKey is not null) throw new NotSupportedException();
                     result.PrimaryKey = new() { Name = pk.Name, Columns = pk.Columns.Keys.ToList() }; break;
+                case UniquenessConstraint unique:
+                    result.UniqueConstraints.Add(new()
+                    {
+                        Name = unique.Name,
+                        Columns = unique.Columns.Select(column => column.Name).ToList(),
+                        NullPolicy = UniqueNullPolicyNames.Format(unique.NullPolicy)
+                    }); break;
                 case DubUrl.Schema.Constraints.ForeignKeyConstraint fk:
                     result.ForeignKeys.Add(new()
                     {
@@ -86,7 +93,36 @@ public sealed class SchemaDocumentExporter
             }
         }
 
+        MapInlineUniqueKeys(table, result);
+        NormalizePrimaryKey(table, result);
         return result;
+    }
+
+    private static void MapInlineUniqueKeys(Table table, TableDocument result)
+    {
+        foreach (var column in table.Columns.Values)
+        {
+            var unique = column.Constraints.Get<UniquenessConstraint>();
+            if (unique?.Name is not null)
+                result.UniqueConstraints.Add(new() { Name = unique.Name, Columns = [column.Name] });
+        }
+    }
+
+    private static void NormalizePrimaryKey(Table table, TableDocument result)
+    {
+        if (result.PrimaryKey is null)
+        {
+            var inlineKeys = table.Columns.Values.Where(column => column.Constraints.Get<PrimaryKeyConstraint>() is not null).ToArray();
+            if (inlineKeys.Length > 1)
+                throw new NotSupportedException("Multiple inline primary keys require an explicit composite primary key.");
+            if (inlineKeys is [var key])
+                result.PrimaryKey = new() { Name = key.Constraints.Get<PrimaryKeyConstraint>()!.Name, Columns = [key.Name] };
+        }
+        foreach (var column in result.Columns.Where(column => result.PrimaryKey?.Columns.Contains(column.Name!) is true))
+        {
+            if (table.Columns[column.Name!].Constraints.Get<NullableConstraint>() is null)
+                column.Nullable = false;
+        }
     }
 
     private static ColumnDocument Column(Column column)
@@ -154,8 +190,9 @@ public sealed class SchemaDocumentExporter
         {
             switch (constraint)
             {
-                case NullableConstraint or NotNullableConstraint: break;
-                case UniquenessConstraint: result.Unique = true; break;
+                case NullableConstraint or NotNullableConstraint or PrimaryKeyConstraint: break;
+                case UniquenessConstraint { Name: null }: result.Unique = true; break;
+                case UniquenessConstraint: break;
                 case CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint: result.Checks.Add(Check(constraint)); break;
                 default: throw new NotSupportedException("Unsupported column constraint.");
             }

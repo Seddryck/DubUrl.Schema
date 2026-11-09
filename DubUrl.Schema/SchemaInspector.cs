@@ -49,19 +49,24 @@ public sealed class SchemaInspector
         catch (Exception exception) when (exception is DbException or InvalidOperationException or TimeoutException or NotSupportedException)
         { return Failure("SDI002", MetadataCoverage.Inaccessible, "Database metadata could not be accessed."); }
         cancellationToken.ThrowIfCancellationRequested();
-        return Map(metadata, options, cancellationToken);
+        return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader);
     }
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options = null, CancellationToken cancellationToken = default)
+        => Map(metadata, options, cancellationToken, null);
+
+    public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         cancellationToken.ThrowIfCancellationRequested();
-        try { return MapCore(metadata, options ?? new(), cancellationToken); }
+        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata); }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
         { return Failure("SDI007", MetadataCoverage.Unrepresentable, "Metadata could not be mapped into a valid schema."); }
     }
 
-    private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options, CancellationToken cancellationToken)
+    private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options,
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         options ??= new();
@@ -79,8 +84,10 @@ public sealed class SchemaInspector
             cancellationToken.ThrowIfCancellationRequested();
             try
             {
-                tables.Add(MapTable(table, selected, diagnostics));
-                indexes.AddRange(MapIndexes(table));
+                var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
+                    .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
+                tables.Add(MapTable(table, selected, diagnostics, unique));
+                indexes.AddRange(MapIndexes(table, unique, diagnostics));
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
             {
@@ -135,7 +142,8 @@ public sealed class SchemaInspector
         }
     }
 
-    private static Table MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected, List<DiscoveryDiagnostic> diagnostics)
+    private static Table MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
+        List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
         var columns = table.Columns.OrderBy(column => column.Ordinal).Select(column => MapColumn(column)).ToArray();
@@ -146,18 +154,34 @@ public sealed class SchemaInspector
         constraints.AddRange(MapForeignKeys(table, selected, diagnostics));
         constraints.AddRange(table.Checks.OrderBy(check => check.Name, StringComparer.Ordinal).Select(check => new CheckConstraint(
             Expression(check.Left), check.Operator, Expression(check.Right), check.Name)));
-        constraints.AddRange(table.UniqueConstraints.OrderBy(unique => unique.Name, StringComparer.Ordinal)
-            .Select(unique => new UniquenessConstraint(unique.Columns.Select(name => byName[name]).ToArray(), unique.Name)));
+        constraints.AddRange(uniqueKeys.Select(unique => new UniquenessConstraint(
+            unique.Key.Columns.Select(name => byName[name]).ToArray(),
+            unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));
 
         return new Table(Name(table.Identity), columns, constraints.ToArray(), table.Comment);
     }
 
-    private static IEnumerable<Index> MapIndexes(MetadataTable table)
+    private static IEnumerable<Index> MapIndexes(MetadataTable table,
+        (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys, List<DiscoveryDiagnostic> diagnostics)
     {
-        return table.Indexes.OrderBy(index => Name(index.Identity).Key, StringComparer.Ordinal).Select(index =>
-            new Index(Name(index.Identity), Name(table.Identity), index.Columns.Select(column =>
+        var backing = uniqueKeys.SelectMany(key => key.Metadata?.BackingIndexes ?? [])
+            .GroupBy(identity => identity).ToDictionary(group => group.Key, group => group.Count());
+        foreach (var index in table.Indexes.OrderBy(index => Name(index.Identity).Key, StringComparer.Ordinal))
+        {
+            var claims = backing.GetValueOrDefault(index.Identity);
+            if (claims == 1 && index.Unique)
+                continue;
+            if (claims > 0 || (index.Unique && uniqueKeys.Any(key =>
+                key.Metadata is { NullPolicy: not UniqueNullPolicy.Native }
+                && key.Key.Columns.ToHashSet(StringComparer.Ordinal).SetEquals(index.Columns.Select(column => column.Name)))))
+            {
+                diagnostics.Add(new("SDI010", SchemaFeature.Indexes, MetadataCoverage.Unrepresentable,
+                    "A discovered index has ambiguous ownership or null semantics for a UNIQUE constraint.", table.Identity));
+            }
+            yield return new Index(Name(index.Identity), Name(table.Identity), index.Columns.Select(column =>
                 new IndexColumn(column.Name, column.Descending is null ? null :
-                    column.Descending.Value ? IndexSortDirection.Descending : IndexSortDirection.Ascending)).ToArray(), index.Unique));
+                    column.Descending.Value ? IndexSortDirection.Descending : IndexSortDirection.Ascending)).ToArray(), index.Unique);
+        }
     }
 
     private static List<Constraint> MapForeignKeys(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected, List<DiscoveryDiagnostic> diagnostics)

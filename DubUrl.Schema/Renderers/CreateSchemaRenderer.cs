@@ -41,10 +41,15 @@ public class CreateSchemaRenderer : RendererEngine
 
     private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting, bool includeIdentityPrerequisites)
     {
-        var helpers = CreateHelpers(dialect);
+        var helpers = CreateIndexRenderer.CreateIndexHelpers(dialect);
         helpers.Add("identityprerequisites", value =>
         {
-            if (value is TableViewModel table) PrepareColumnPlans(table, dialect, nativeTypes);
+            if (value is TableViewModel table)
+            {
+                if (table.RequiresExplicitUniquePlan && !table.ExplicitUniqueConstraintsPlanned)
+                    throw new NotSupportedException("Explicit UNIQUE constraints require schema-level planning.");
+                PrepareColumnPlans(table, dialect, nativeTypes);
+            }
             return includeIdentityPrerequisites ? RenderIdentityPrerequisites(value, dialect, dropExisting) : "";
         });
         return helpers;
@@ -193,6 +198,8 @@ public class CreateSchemaRenderer : RendererEngine
     protected CreateSchemaRenderer(IDbTypeMapper typeMapper, ISqlFunctionMapper sqlFunctionMapper, IDictionary<string, Func<object?, string>> helpers)
         : base(typeof(CreateSchemaRenderer).Assembly, $"{typeof(CreateSchemaRenderer).Namespace}.Templates.CreateTables.sql.hbs")
     {
+        AddPartial("createIndex", CreateIndexRenderer.StatementTemplate);
+        AddPartial("uniqueConstraint", $"{typeof(CreateSchemaRenderer).Namespace}.Templates.UniqueConstraint.sql.hbs");
         AddFormatter("tabledescription", _ => "");
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");

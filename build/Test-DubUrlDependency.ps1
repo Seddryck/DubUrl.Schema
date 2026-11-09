@@ -19,6 +19,7 @@ $request = {
     }
     if ($Uri -match '/(duburl|duburl\.provider\.[a-z]+)/index.json$') {
         if ($state.Missing -and $Uri -match 'provider.future') { return @{ versions = @('0.55.1') } }
+        if ($Uri -like '*/duburl/index.json') { return @{ versions = @('0.55.1', '0.60.0', '0.60.1', '0.61.0-beta.1') } }
         return @{ versions = @('0.55.1', '0.60.0', '0.61.0-beta.1') }
     }
     throw "Unexpected URI: $Uri"
@@ -29,6 +30,7 @@ function Assert-Rejected([scriptblock]$Action, [string]$Pattern) {
 }
 try {
     Set-Content (Join-Path $fixture 'Core.csproj') '<Project><ItemGroup><PackageReference Include="DubUrl"/><PackageReference Include="Other"/></ItemGroup></Project>'
+    Set-Content (Join-Path $fixture 'Directory.Build.props') '<Project><PropertyGroup><DubUrlVersion>0.60.0</DubUrlVersion></PropertyGroup></Project>'
     Set-Content (Join-Path $fixture 'QA.csproj') '<Project><ItemGroup><PackageReference Include="DubUrl.Provider.Sqlite"/><PackageReference Include="DubUrl.Provider.Future"/></ItemGroup></Project>'
     $resolveParams = @{ RepositoryRoot = $fixture; Request = $request }
     if ((Resolve-DubUrlVersion @resolveParams) -ne '0.60.0') { throw 'Latest stable release was not selected.' }
@@ -46,15 +48,19 @@ try {
     Assert-Rejected { Resolve-DubUrlVersion @resolveParams } '*did not return a stable DubUrl version*'
     $state.Version = ''
     Assert-Rejected { Resolve-DubUrlVersion @resolveParams } '*did not return a stable DubUrl version*'
-    $state.Version = '0.60.0'; $state.Missing = $true
-    Assert-Rejected { Resolve-DubUrlVersion @resolveParams } '*DubUrl.Provider.Future 0.60.0 is not published*'
+    $state.Version = '0.60.1'
+    if ((Resolve-DubUrlVersion @resolveParams) -ne '0.60.0') { throw 'Expected the newest complete stable release.' }
+    Assert-Rejected { Resolve-DubUrlVersion @resolveParams -Candidate '0.60.1' } '*0.60.1 is not published*'
+    $state.Missing = $true
+    Assert-Rejected { Resolve-DubUrlVersion @resolveParams } '*No complete stable DubUrl dependency set at or above 0.60.0*'
     Assert-Rejected { Resolve-DubUrlVersion @resolveParams -Candidate '0.60.0' } '*DubUrl.Provider.Future 0.60.0 is not published*'
     $state.Missing = $false; $state.Fail = $true
     Assert-Rejected { Resolve-DubUrlVersion @resolveParams } '*Simulated NuGet outage*'
-    Write-Host 'Passed 9 dependency-selection scenarios (including six invalid override forms).'
+    Write-Host 'Passed 11 dependency-selection scenarios (including six invalid override forms).'
 }
 finally {
     Remove-Item -LiteralPath (Join-Path $fixture 'Core.csproj') -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath (Join-Path $fixture 'QA.csproj') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $fixture 'Directory.Build.props') -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $fixture -Force
 }

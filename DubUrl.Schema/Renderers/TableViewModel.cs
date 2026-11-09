@@ -22,6 +22,10 @@ public class TableViewModel
     public NotNullableConstraint? NotNullable { get; }
     public UniquenessConstraint? Unique { get; }
     public UniquenessConstraint[] UniqueConstraints { get; }
+    internal bool RequiresExplicitUniquePlan { get; }
+    internal bool ExplicitUniqueConstraintsPlanned { get; set; }
+    public List<UniqueConstraintViewModel> ExplicitUniqueConstraints { get; } = [];
+    public List<IndexViewModel> ExplicitUniqueIndexes { get; } = [];
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }
     public CheckConstraint[] Checks { get; }
@@ -36,17 +40,16 @@ public class TableViewModel
         Identity = table.Identity;
         var primaryKey = table.Constraints.Get<PrimaryKeyConstraint>();
         PrimaryKey = primaryKey is null ? null : new PrimaryKeyConstraintViewModel(primaryKey);
-        var primaryNames = primaryKey?.Columns.Keys.ToHashSet(StringComparer.Ordinal)
-            ?? table.Columns.Values.Where(column => column.Constraints.Get<PrimaryKeyConstraint>() is not null)
-                .Select(column => column.Name).ToHashSet(StringComparer.Ordinal);
-        UniqueConstraints = table.Constraints.OfType<UniquenessConstraint>()
-            .Where(unique => !primaryNames.SetEquals(unique.Columns.Select(column => column.Name))).ToArray();
+        var primaryNames = table.PrimaryKeyColumns();
+        var effectiveUnique = table.EffectiveTableUniqueConstraints().ToArray();
+        UniqueConstraints = effectiveUnique.Where(unique => unique.NullPolicy == UniqueNullPolicy.Native).ToArray();
+        RequiresExplicitUniquePlan = effectiveUnique.Length != UniqueConstraints.Length;
         Columns = table.Columns.Values.Select(c => new ColumnViewModel(c, primaryKey is null, table.Identity,
-            primaryNames.SetEquals([c.Name]))).ToArray();
+            primaryNames.SetEquals([c.Name]) || c.Constraints.Get<UniquenessConstraint>()?.Name is not null)).ToArray();
         foreach (var column in Columns)
         {
             column.IsKey |= primaryNames.Contains(column.Name)
-                || UniqueConstraints.Any(unique => unique.Columns.Any(item => item.Name == column.Name));
+                || effectiveUnique.Any(unique => unique.Columns.Any(item => item.Name == column.Name));
         }
 
         Nullable = table.Constraints.Get<NullableConstraint>();

@@ -24,6 +24,7 @@ public sealed class TableDocument
     public string? Description { get; set; }
     public List<ColumnDocument> Columns { get; set; } = [];
     public PrimaryKeyDocument? PrimaryKey { get; set; }
+    public List<UniqueConstraintDocument> UniqueConstraints { get; set; } = [];
     public List<CheckDocument> Checks { get; set; } = [];
     public List<ForeignKeyDocument> ForeignKeys { get; set; } = [];
 }
@@ -95,6 +96,13 @@ public sealed class PrimaryKeyDocument
 {
     public string? Name { get; set; }
     public List<string> Columns { get; set; } = [];
+}
+
+public sealed class UniqueConstraintDocument
+{
+    public string? Name { get; set; }
+    public List<string> Columns { get; set; } = [];
+    public string? NullPolicy { get; set; }
 }
 
 public sealed class ForeignKeyDocument

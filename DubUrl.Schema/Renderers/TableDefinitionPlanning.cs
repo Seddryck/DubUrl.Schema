@@ -52,10 +52,10 @@ internal static class TableDefinitionPlanning
             throw new NotSupportedException("Multiple inline primary keys require an explicit composite primary key.");
         var primaryKey = primary is not null ? new SchemaKeyDefinition(primary.Name, primary.Columns.Keys.ToArray())
             : inlinePrimary.Length == 1 ? new SchemaKeyDefinition(inlinePrimary[0].Constraints.Get<PrimaryKeyConstraint>()!.Name, [inlinePrimary[0].Name]) : null;
-        var unique = table.Constraints.OfType<UniquenessConstraint>()
+        var unique = table.EffectiveTableUniqueConstraints().Where(key => key.NullPolicy == UniqueNullPolicy.Native)
             .Select(key => new SchemaKeyDefinition(key.Name, key.Columns.Select(column => column.Name).ToArray()))
-            .Concat(table.Columns.Values.Where(column => column.Constraints.Get<UniquenessConstraint>() is not null)
-                .Select(column => new SchemaKeyDefinition(column.Constraints.Get<UniquenessConstraint>()!.Name, [column.Name])))
+            .Concat(table.Columns.Values.Where(column => column.Constraints.Get<UniquenessConstraint>() is { Name: null })
+                .Select(column => new SchemaKeyDefinition(null, [column.Name])))
             .Where(key => primaryKey is null || !key.Columns.ToHashSet(StringComparer.Ordinal).SetEquals(primaryKey.Columns))
             .ToArray();
         return new(Name(table.Identity), table.Columns.Keys.ToArray(), primaryKey, unique, table.PhysicalOptions,

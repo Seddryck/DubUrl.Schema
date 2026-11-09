@@ -1,0 +1,149 @@
+using System.Globalization;
+using DubUrl.Querying.Dialects;
+using DubUrl.Schema.Constraints;
+
+namespace DubUrl.Schema.Renderers;
+
+internal static class UniqueConstraintPlanning
+{
+    internal static void Apply(IDialect dialect, Schema schema, TableViewModel[] tables)
+    {
+        var indexNames = schema.Indexes.Values.Select(index => index.Identity).ToHashSet();
+        var foreignKeys = schema.Tables.Values.SelectMany(table => table.Constraints
+            .OfType<ForeignKeyConstraint>().Select(key => (Table: table, Key: key))).ToArray();
+        var referenced = foreignKeys.Select(item => item.Key.TargetTable).ToHashSet();
+        var targets = new Dictionary<DatabaseObjectName, List<(UniquenessConstraint Key, UniqueConstraintPlan Plan)>>();
+        foreach (var table in schema.Tables.Values.Concat(schema.ExternalTables.Values.Where(table => referenced.Contains(table.Identity))))
+        {
+            var indexes = schema.Indexes.Values.Where(index => index.TableIdentity == table.Identity).ToArray();
+            var model = tables.SingleOrDefault(item => item.Identity == table.Identity);
+            var targetKeys = PlanTable(dialect, table, model, indexes, indexNames);
+            if (targetKeys.Count > 0)
+                targets.Add(table.Identity, targetKeys);
+        }
+        ValidateForeignKeys(foreignKeys, targets);
+    }
+
+    private static List<(UniquenessConstraint Key, UniqueConstraintPlan Plan)> PlanTable(IDialect dialect, Table table,
+        TableViewModel? model, Index[] indexes, HashSet<DatabaseObjectName> indexNames)
+    {
+        var keys = table.EffectiveTableUniqueConstraints().ToArray();
+        var targetKeys = new List<(UniquenessConstraint Key, UniqueConstraintPlan Plan)>();
+        if (keys.All(key => key.NullPolicy == UniqueNullPolicy.Native))
+            return targetKeys;
+
+        var declaredNames = table.Constraints.OfType<Constraint>()
+            .Concat(table.Columns.Values.SelectMany(column => column.Constraints.OfType<Constraint>()))
+            .Select(constraint => constraint.Name).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var localIndexNames = indexes.Select(index => index.Name).ToHashSet(StringComparer.Ordinal);
+        var reservedNames = declaredNames.Concat(localIndexNames).ToHashSet(StringComparer.Ordinal);
+        for (var position = 0; position < keys.Length; position++)
+        {
+            var key = keys[position];
+            if (key.NullPolicy == UniqueNullPolicy.Native)
+                continue;
+            var name = key.Name ?? SuggestName(table.Name, position + 1, reservedNames);
+            var label = $"UNIQUE '{name}' on table '{table.Identity}'";
+            var plan = ResolvePlan(dialect, new(table, key, name, Array.AsReadOnly(indexes)), label);
+            ApplyPlan(table, model, key, plan, indexNames, localIndexNames, declaredNames, label);
+            reservedNames.UnionWith(localIndexNames);
+            targetKeys.Add((key, plan));
+        }
+        if (model is not null)
+            model.ExplicitUniqueConstraintsPlanned = true;
+        return targetKeys;
+    }
+
+    private static UniqueConstraintPlan ResolvePlan(IDialect dialect, UniqueConstraintContext context, string label)
+    {
+        var key = context.Constraint;
+        var members = key.Columns.Select(column => column.Name).ToHashSet(StringComparer.Ordinal);
+        if (context.Indexes.Any(index => index.IsUnique && members.SetEquals(index.Columns.Keys)))
+            throw new NotSupportedException($"{label} overlaps a separate unique index with an unknown null policy.");
+        if (dialect.SchemaSqlRenderer is not IUniqueConstraintSqlRenderer renderer)
+            throw new NotSupportedException($"{label} requires a provider plan for {key.NullPolicy}.");
+        var plan = renderer.PlanUniqueConstraint(dialect, context);
+        if (plan is null || plan.NullPolicy != key.NullPolicy)
+            throw new NotSupportedException($"{label} cannot be enforced with null policy {key.NullPolicy}.");
+        return plan;
+    }
+
+    private static string SuggestName(string table, int position, HashSet<string> reserved)
+    {
+        var stem = $"UQ_{table}_{position.ToString(CultureInfo.InvariantCulture)}";
+        var name = stem;
+        for (var suffix = 2; !reserved.Add(name); suffix++)
+            name = $"{stem}_{suffix.ToString(CultureInfo.InvariantCulture)}";
+        return name;
+    }
+
+    private static void ApplyPlan(Table table, TableViewModel? model, UniquenessConstraint key,
+        UniqueConstraintPlan plan, HashSet<DatabaseObjectName> indexNames, HashSet<string> localIndexNames,
+        HashSet<string> declaredNames, string label)
+    {
+        switch (plan)
+        {
+            case NativeUniqueConstraintPlan native:
+                if (native.NullPolicyClause is not null && string.IsNullOrWhiteSpace(native.NullPolicyClause))
+                    throw new NotSupportedException($"{label} has an invalid native null-policy clause.");
+                model?.ExplicitUniqueConstraints.Add(new(key.Name, key.Columns, native.NullPolicyClause));
+                return;
+            case UniqueIndexPlan indexPlan when indexPlan.Indexes is { Count: > 0 }:
+                ApplyIndexPlan(table, model, key, indexPlan.Indexes, indexNames, localIndexNames, declaredNames, label);
+                return;
+            default:
+                throw new NotSupportedException($"{label} requires a native constraint or a complete index plan.");
+        }
+    }
+
+    private static void ApplyIndexPlan(Table table, TableViewModel? model, UniquenessConstraint key,
+        IReadOnlyList<UniqueIndexDefinition> definitions, HashSet<DatabaseObjectName> indexNames,
+        HashSet<string> localIndexNames, HashSet<string> declaredNames, string label)
+    {
+        var indexes = definitions.ToArray();
+        if (key.Name is not null && !indexes.Any(index => index?.Identity?.Name == key.Name))
+            throw new NotSupportedException($"{label} requires a backing index that preserves the declared name.");
+        var columns = key.Columns.Select(column => new IndexColumn(column.Name)).ToArray();
+        foreach (var index in indexes)
+        {
+            ValidateIndexDefinition(index, table.Identity, label);
+            if ((model is not null && !indexNames.Add(index.Identity)) || !localIndexNames.Add(index.Identity.Name)
+                || (index.Identity.Name != key.Name && declaredNames.Contains(index.Identity.Name)))
+                throw new NotSupportedException($"{label} has an ambiguous backing index name '{index.Identity}'.");
+            model?.ExplicitUniqueIndexes.Add(new IndexViewModel(new Index(index.Identity, table.Identity, columns, true))
+            {
+                FilterPredicate = index.FilterPredicate,
+                KeySuffix = index.KeySuffix
+            });
+        }
+    }
+
+    private static void ValidateIndexDefinition(UniqueIndexDefinition index, DatabaseObjectName table, string label)
+    {
+        if (index?.Identity is null
+            || (index.FilterPredicate is not null && string.IsNullOrWhiteSpace(index.FilterPredicate))
+            || (index.KeySuffix is not null && string.IsNullOrWhiteSpace(index.KeySuffix))
+            || !SameNamespace(index.Identity, table))
+            throw new NotSupportedException($"{label} has an invalid backing index plan.");
+    }
+
+    private static bool SameNamespace(DatabaseObjectName index, DatabaseObjectName table)
+        => index.Schema == table.Schema && index.Database == table.Database && index.Catalog == table.Catalog;
+
+    private static void ValidateForeignKeys(IEnumerable<(Table Table, ForeignKeyConstraint Key)> foreignKeys,
+        Dictionary<DatabaseObjectName, List<(UniquenessConstraint Key, UniqueConstraintPlan Plan)>> targets)
+    {
+        foreach (var (table, key) in foreignKeys)
+        {
+            if (!targets.TryGetValue(key.TargetTable, out var targetKeys))
+                continue;
+            var members = key.TargetColumns.ToHashSet(StringComparer.Ordinal);
+            var matches = targetKeys.Where(item => members.SetEquals(item.Key.Columns.Select(column => column.Name))).ToArray();
+            if (matches.Length == 0)
+                continue;
+            if (!matches.Any(item => item.Plan.CanReferenceWithForeignKey
+                && item.Key.Columns.Select(column => column.Name).SequenceEqual(key.TargetColumns, StringComparer.Ordinal)))
+                throw new NotSupportedException($"Foreign key '{key.Name}' on '{table.Identity}' has no eligible planned UNIQUE target on '{key.TargetTable}'.");
+        }
+    }
+}

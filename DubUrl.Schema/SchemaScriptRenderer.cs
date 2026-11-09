@@ -97,7 +97,8 @@ public class SchemaScriptRenderer
                 Add(new DropTablesIfExistsRenderer(Dialect), new { model = new { TablesToDrop = new[] { table } } }, SchemaSqlOperation.DropTable, table.Identity);
         }
 
-        AddTableCommands(commands, tables);
+        var createIndex = new CreateIndexRenderer(Dialect);
+        AddTableCommands(commands, tables, createIndex);
         var foreignKeys = new ForeignKeyRenderer(Dialect);
         foreach (var table in tables.Where(table => !table.RenderForeignKeysInline))
         {
@@ -111,7 +112,7 @@ public class SchemaScriptRenderer
         if (SupportsComments)
             AddCommentCommands(commands, tables);
         foreach (var index in indexes.Where(index => !index.ConsumedByTable))
-            Add(new CreateIndexRenderer(Dialect), new { model = new { Indexes = new[] { index } } }, SchemaSqlOperation.CreateIndex, index.Identity);
+            Add(createIndex, new { model = new { Indexes = new[] { index } } }, SchemaSqlOperation.CreateIndex, index.Identity);
         foreach (var view in views)
             Add(new CreateViewsRenderer(Dialect), new { model = new { Views = new[] { view } } }, SchemaSqlOperation.CreateView, view.Identity);
 
@@ -126,6 +127,7 @@ public class SchemaScriptRenderer
         ValidateForeignKeys(schema, tables);
         MarkUniqueIndexColumns(schema, tables);
         TableDefinitionPlanning.Apply(Dialect, schema, tables);
+        UniqueConstraintPlanning.Apply(Dialect, schema, tables);
         return tables;
     }
 
@@ -135,7 +137,7 @@ public class SchemaScriptRenderer
         return schema.Indexes.Values.Select(index => new IndexViewModel(index) { ConsumedByTable = consumedByTable }).ToArray();
     }
 
-    private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)
+    private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables, CreateIndexRenderer createIndex)
     {
         var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting, false);
         foreach (var table in tables)
@@ -149,7 +151,13 @@ public class SchemaScriptRenderer
                     commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
                 }
             }
-            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } } }), SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } }, PlanCommandsSeparately = true }),
+                SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            foreach (var index in table.ExplicitUniqueIndexes)
+            {
+                var sql = createIndex.Render(new { model = new { Indexes = new[] { index } } });
+                commands.Add(new(sql, SchemaSqlOperation.CreateIndex, index.Identity.ToString()));
+            }
         }
     }
 

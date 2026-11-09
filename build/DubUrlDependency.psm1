@@ -32,10 +32,34 @@ function Resolve-DubUrlVersion {
             $project.SelectNodes('//PackageReference') | ForEach-Object { $_.GetAttribute('Include') }
         } | Where-Object { $_ -eq 'DubUrl' -or $_ -like 'DubUrl.Provider.*' } | Sort-Object -Unique)
     if ('DubUrl' -notin $packages) { throw 'No DubUrl core package reference was found.' }
+    if (-not $Candidate) {
+        [xml]$build = Get-Content (Join-Path $RepositoryRoot 'Directory.Build.props') -Raw
+        $baseline = [version]$build.SelectSingleNode('//DubUrlVersion').InnerText
+        $latest = [version]$version
+        $common = [Collections.Generic.HashSet[string]]::new()
+    }
     foreach ($package in $packages) {
         $id = $package.ToLowerInvariant()
         $available = & $Request "$($content.TrimEnd('/'))/$id/index.json"
-        if ($version -notin $available.versions) { throw "$package $version is not published on NuGet; refusing a mixed dependency set." }
+        if ($Candidate) {
+            if ($Candidate -notin $available.versions) { throw "$package $Candidate is not published on NuGet; refusing a mixed dependency set." }
+            continue
+        }
+        if ($package -eq 'DubUrl') {
+            foreach ($item in $available.versions) {
+                if ($item -match '^\d+\.\d+\.\d+\z' -and [version]$item -ge $baseline -and [version]$item -le $latest) {
+                    $null = $common.Add($item)
+                }
+            }
+        }
+        else { $common.IntersectWith([string[]]$available.versions) }
+    }
+    if (-not $Candidate) {
+        $version = $common | Sort-Object { [version]$_ } -Descending | Select-Object -First 1
+        if (-not $version) { throw "No complete stable DubUrl dependency set at or above $baseline is published on NuGet." }
+        if ([version]$version -ne $latest) {
+            Write-Host "DubUrl $latest is not available for every dependency. Using the complete $version release."
+        }
     }
     Write-Host "Selected DubUrl $version for $($packages.Count) core/provider packages."
     return $version

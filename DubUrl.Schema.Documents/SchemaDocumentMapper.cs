@@ -68,6 +68,8 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
                 document.PrimaryKey.Name));
         }
 
+        constraints.AddRange(document.UniqueConstraints.Select(unique => new UniquenessConstraint(
+            unique.Columns.Select(name => columnsByName[name]).ToArray(), unique.Name, UniqueNullPolicyNames.Parse(unique.NullPolicy))));
         constraints.AddRange(document.Checks.Select(MapCheck));
         constraints.AddRange(document.ForeignKeys.Select(foreignKey => new ForeignKeyConstraint(
             foreignKey.Name!,

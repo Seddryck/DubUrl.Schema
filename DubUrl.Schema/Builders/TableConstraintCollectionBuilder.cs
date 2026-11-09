@@ -22,6 +22,12 @@ public class TableConstraintCollectionBuilder : IEnumerable<IConstraintBuilder>
         return this;
     }
 
+    public TableConstraintCollectionBuilder AddUnique(Func<UniquenessConstraintBuilder, UniquenessConstraintBuilder> constraint)
+    {
+        Constraints.Add(constraint(new()));
+        return this;
+    }
+
     public IEnumerator<IConstraintBuilder> GetEnumerator()
         => Constraints.GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator()

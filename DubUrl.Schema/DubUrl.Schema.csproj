@@ -2,9 +2,11 @@
 
 	<ItemGroup>
 	  <EmbeddedResource Include="Renderers\Templates\CreateIndexes.sql.hbs" />
+	  <EmbeddedResource Include="Renderers\Templates\CreateIndex.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\DropIndexesIfExists.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\DropTablesIfExists.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\CreateTables.sql.hbs" />
+	  <EmbeddedResource Include="Renderers\Templates\UniqueConstraint.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\CreateForeignKeys.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\CreateComments.sql.hbs" />
 	  <EmbeddedResource Include="Renderers\Templates\CreateViews.sql.hbs" />
