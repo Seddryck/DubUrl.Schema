@@ -62,11 +62,17 @@ Each unit job retains its two canonical Cobertura reports in a separate coverage
 
 The upload check fails on upload errors. Coverage threshold validation remains a separate check and packaging continues to depend on that threshold, as in DubUrl.
 
-The shared NUnit fixtures live in DubUrl.Schema.QA. This internal helper is built with the solution and consumed by provider QA projects; it is not a test runner or a published package.
-
-
 ## Mandatory provider feature coverage
 
-All seven database jobs execute the same 60-scenario manifest plus the original baseline and provider regression fixtures. The shared ProviderContract requires provider overrides for execution and typed catalog observations; assertions and required scenario names remain shared. QA/run.ps1 validates each required case passed exactly once and rejects skips. A global setup guard restricts even direct QA execution to .NET 10. See QA/README.md for the scenario families and explicit current provider limitations.
+Schema CI delegates the seven live database jobs to the [reusable workflow in DubUrl.Providers](https://github.com/Seddryck/DubUrl.Providers/blob/1f07066a4584cc75a93ea8f3a8cb8868ea8948a6/.github/workflows/schema-qa.yml). It passes the Schema commit under test and the selected `DubUrlVersion`. The provider repository owns the shared NUnit fixtures, scenario manifest and runner. All seven jobs run on .NET 10 and require each baseline and shared scenario to pass exactly once, with no skips.
 
-Schema replacement now orders table drops by dependency, independently of whether creation uses inline or later foreign keys. Cyclic declaration rendering remains compatible for dialects that allow it. The new cross-dialect unit regression and all seven live suites cover the replacement behavior.
+To run a provider fixture locally, use the following commands from the root of a `DubUrl.Providers` checkout. Pass `-SourceCommit` to the initializer to test a specific Schema commit. If you override `-DubUrlVersion`, pass the same version to both scripts.
+
+```powershell
+./build/Initialize-SchemaQa.ps1
+./QA/Schema/run.ps1 -Database Sqlite
+```
+
+See the [provider QA guide](https://github.com/Seddryck/DubUrl.Providers/blob/1f07066a4584cc75a93ea8f3a8cb8868ea8948a6/QA/Schema/README.md) for the scenario families and provider limitations.
+
+Schema replacement orders table drops by dependency, independently of whether creation uses inline or later foreign keys. Cyclic declaration rendering remains compatible for dialects that allow it.
