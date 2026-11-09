@@ -24,7 +24,7 @@ public class TableViewModel
     public UniquenessConstraint[] UniqueConstraints { get; }
     internal bool RequiresExplicitUniquePlan { get; }
     internal bool ExplicitUniqueConstraintsPlanned { get; set; }
-    public List<string> ExplicitUniqueDefinitions { get; } = [];
+    public List<UniqueConstraintViewModel> ExplicitUniqueConstraints { get; } = [];
     public List<IndexViewModel> ExplicitUniqueIndexes { get; } = [];
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }

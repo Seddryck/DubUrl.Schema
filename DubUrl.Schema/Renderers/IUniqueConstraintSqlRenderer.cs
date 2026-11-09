@@ -17,8 +17,11 @@ public sealed record UniqueConstraintContext(Table Table, UniquenessConstraint C
 /// <param name="CanReferenceWithForeignKey">Whether the tuple can be targeted under the provider's foreign-key DDL rules.</param>
 public abstract record UniqueConstraintPlan(UniqueNullPolicy NullPolicy, bool CanReferenceWithForeignKey);
 
-/// <summary>A trusted definition within CREATE TABLE, with no separate backing-index command.</summary>
-public sealed record NativeUniqueConstraintPlan(UniqueNullPolicy NullPolicy, bool CanReferenceWithForeignKey, string Definition)
+/// <summary>A native UNIQUE constraint within CREATE TABLE.</summary>
+/// <param name="NullPolicy">The policy the constraint enforces.</param>
+/// <param name="CanReferenceWithForeignKey">Whether the tuple can be targeted under the provider's foreign-key DDL rules.</param>
+/// <param name="NullPolicyClause">An optional trusted provider clause between UNIQUE and the key columns.</param>
+public sealed record NativeUniqueConstraintPlan(UniqueNullPolicy NullPolicy, bool CanReferenceWithForeignKey, string? NullPolicyClause = null)
     : UniqueConstraintPlan(NullPolicy, CanReferenceWithForeignKey);
 
 /// <summary>Ordered backing indexes that together enforce the declaration.</summary>

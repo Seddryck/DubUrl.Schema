@@ -1,0 +1,1 @@
+{{#if Name}}CONSTRAINT {{identity Name}} {{/if}}UNIQUE{{#if NullPolicyClause}} {{{NullPolicyClause}}}{{/if}} ({{#each Columns}}{{identity Name}}{{#unless @last}}, {{/unless}}{{/each}})

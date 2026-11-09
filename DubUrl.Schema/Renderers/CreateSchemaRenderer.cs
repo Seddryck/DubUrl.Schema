@@ -199,6 +199,7 @@ public class CreateSchemaRenderer : RendererEngine
         : base(typeof(CreateSchemaRenderer).Assembly, $"{typeof(CreateSchemaRenderer).Namespace}.Templates.CreateTables.sql.hbs")
     {
         AddPartial("createIndex", CreateIndexRenderer.StatementTemplate);
+        AddPartial("uniqueConstraint", $"{typeof(CreateSchemaRenderer).Namespace}.Templates.UniqueConstraint.sql.hbs");
         AddFormatter("tabledescription", _ => "");
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");

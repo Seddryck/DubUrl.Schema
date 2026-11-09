@@ -24,13 +24,14 @@ public class SchemaSqlRendererExtensionTests
         source = builder.Build().Get<TSqlDialect>();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void UniquePlans_ConsumeExplicitTupleOnceAndKeepLegacyTablePlanning(bool useIndex)
+    [TestCase(false, "explicit key", "PROVIDER_NULL_POLICY")]
+    [TestCase(false, null, null)]
+    [TestCase(true, null, null)]
+    public void UniquePlans_ConsumeExplicitTupleOnceAndKeepLegacyTablePlanning(bool useIndex, string? name, string? clause)
     {
-        var provider = new UniquePlanningRenderer(useIndex);
+        var provider = new UniquePlanningRenderer(useIndex, nullPolicyClause: clause);
         var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider));
-        var table = UniqueTable();
+        var table = UniqueTable(name);
         var child = new Table("Child", table.Columns.Values.ToArray(),
             [new ForeignKey("FK_tuple", ["B", "A"], table.Identity, ["B", "A"])]);
         var schema = new Schema([child, table]);
@@ -41,13 +42,15 @@ public class SchemaSqlRendererExtensionTests
             Assert.That(provider.Context!.Constraint.Columns.Select(column => column.Name), Is.EqualTo(new[] { "B", "A" }));
             Assert.That(provider.Context.Constraint.Columns[0], Is.SameAs(table.Columns["B"]));
             Assert.That(provider.Context.Constraint.Columns[0].Constraints.Get<NullableConstraint>(), Is.Not.Null);
-            Assert.That(provider.Context.SuggestedName, Is.EqualTo("UQ_Pair_2"));
+            Assert.That(provider.Context.SuggestedName, Is.EqualTo(name ?? "UQ_Pair_2"));
             Assert.That(provider.LegacyKeys, Is.EqualTo(new[] { "Legacy" }));
             Assert.That(text.Split("LEGACY_UNIQUE").Length, Is.EqualTo(2));
             Assert.That(commands.Select(command => command.Operation), Is.EqualTo(useIndex
                 ? new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.ForeignKey }
                 : new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey }));
-            var marker = useIndex ? "CREATE UNIQUE INDEX" : "EXPLICIT_UNIQUE";
+            var constraintSql = name is null ? "UNIQUE ([B], [A])" : "CONSTRAINT [explicit key] UNIQUE PROVIDER_NULL_POLICY ([B], [A])";
+            var marker = useIndex ? "CREATE UNIQUE INDEX" : constraintSql;
+            Assert.That(text, Does.Contain(marker));
             Assert.That(text.IndexOf(marker, StringComparison.Ordinal),
                 Is.LessThan(text.IndexOf("FOREIGN KEY", StringComparison.Ordinal)));
             if (useIndex)
@@ -64,8 +67,8 @@ public class SchemaSqlRendererExtensionTests
             }
             else
             {
-                Assert.That(text.Split("EXPLICIT_UNIQUE").Length, Is.EqualTo(2));
-                Assert.That(commands.Count(command => command.CommandText.Contains("EXPLICIT_UNIQUE", StringComparison.Ordinal)), Is.EqualTo(1));
+                Assert.That(text.Split(constraintSql).Length, Is.EqualTo(2));
+                Assert.That(commands.Count(command => command.CommandText.Contains(constraintSql, StringComparison.Ordinal)), Is.EqualTo(1));
             }
         });
     }
@@ -76,6 +79,7 @@ public class SchemaSqlRendererExtensionTests
     [TestCase("collision", "ambiguous backing index name")]
     [TestCase("ineligible", "no eligible planned UNIQUE target")]
     [TestCase("reordered", "no eligible planned UNIQUE target")]
+    [TestCase("blank clause", "invalid native null-policy clause")]
     public void UniquePlans_RejectUnsupportedOrAmbiguousEnforcement(string failure, string message)
     {
         var table = UniqueTable();
@@ -89,8 +93,8 @@ public class SchemaSqlRendererExtensionTests
             _ => []
         };
         var dialect = failure == "unsupported" ? source : new ProviderDialect(source,
-            new UniquePlanningRenderer(true, failure != "ineligible", failure == "mismatch",
-                failure == "collision" ? "existing" : null));
+            new UniquePlanningRenderer(failure != "blank clause", failure != "ineligible", failure == "mismatch",
+                failure == "collision" ? "existing" : null, failure == "blank clause" ? " " : null));
         var renderer = new SchemaScriptRenderer(dialect);
         var schema = new Schema([child, table], indexes);
         Assert.That(() => renderer.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains(message));
@@ -108,15 +112,16 @@ public class SchemaSqlRendererExtensionTests
         Assert.That(sql, Does.Contain("PRIMARY KEY").And.Not.Contain("UNIQUE"));
     }
 
-    private static Table UniqueTable()
+    private static Table UniqueTable(string? name = null)
     {
         var a = new Column("A", DbType.Int32, constraints: [new NotNullableConstraint()]);
         var b = new Column("B", DbType.Int32, constraints: [new NullableConstraint()]);
         return new Table("Pair", [a, b],
-            [new UniquenessConstraint([a], "Legacy"), new UniquenessConstraint([b, a], null, UniqueNullPolicy.NullsDistinct)]);
+            [new UniquenessConstraint([a], "Legacy"), new UniquenessConstraint([b, a], name, UniqueNullPolicy.NullsDistinct)]);
     }
 
-    private sealed class UniquePlanningRenderer(bool useIndex, bool canReference = true, bool mismatch = false, string? backingName = null)
+    private sealed class UniquePlanningRenderer(bool useIndex, bool canReference = true, bool mismatch = false, string? backingName = null,
+        string? nullPolicyClause = null)
         : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, ITableDefinitionSqlRenderer
     {
         public UniqueConstraintContext? Context { get; private set; }
@@ -132,7 +137,7 @@ public class SchemaSqlRendererExtensionTests
                         new(new(backingName ?? context.SuggestedName), "[B] <> 'a&b'", "PROVIDER_KEY_OPTION"),
                         new(new(context.SuggestedName + "_aux"), "[B] IS NULL")
                     ])
-                : new NativeUniqueConstraintPlan(policy, canReference, "EXPLICIT_UNIQUE ([B], [A])");
+                : new NativeUniqueConstraintPlan(policy, canReference, nullPolicyClause);
         }
 
         public TableDefinitionPlan RenderTableDefinition(IDialect dialect, TableDefinitionContext table)

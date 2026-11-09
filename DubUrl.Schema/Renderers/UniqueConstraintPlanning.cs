@@ -67,8 +67,10 @@ internal static class UniqueConstraintPlanning
     {
         switch (plan)
         {
-            case NativeUniqueConstraintPlan native when !string.IsNullOrWhiteSpace(native.Definition):
-                model?.ExplicitUniqueDefinitions.Add(native.Definition);
+            case NativeUniqueConstraintPlan native:
+                if (native.NullPolicyClause is not null && string.IsNullOrWhiteSpace(native.NullPolicyClause))
+                    throw new NotSupportedException($"{label} has an invalid native null-policy clause.");
+                model?.ExplicitUniqueConstraints.Add(new(key.Name, key.Columns, native.NullPolicyClause));
                 return;
             case UniqueIndexPlan indexPlan when indexPlan.Indexes is { Count: > 0 }:
                 var indexes = indexPlan.Indexes.ToArray();
@@ -93,7 +95,7 @@ internal static class UniqueConstraintPlanning
                 }
                 return;
             default:
-                throw new NotSupportedException($"{label} requires a native definition or a complete index plan.");
+                throw new NotSupportedException($"{label} requires a native constraint or a complete index plan.");
         }
     }
 
