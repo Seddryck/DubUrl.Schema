@@ -61,7 +61,7 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (columns.GroupBy(c => c.Name).Count() != columns.Length)
             throw new InvalidOperationException("Column names must be unique.");
 
-        var constraints = Constraints.Select(c => c.Build());
+        var constraints = Constraints.Select(c => c.Build()).ToArray();
 
         var primaryKeyConstraint = constraints.OfType<PrimaryKeyConstraint>().SingleOrDefault();
         if (primaryKeyConstraint is not null )
@@ -91,6 +91,6 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (duplicateConstraintNames.Length > 0)
             throw new InvalidOperationException($"Constraint names must be unique within table '{Name}': {string.Join(", ", duplicateConstraintNames)}.");
 
-        return new Table(Identity!, columns, [.. constraints], Description, PhysicalOptions);
+        return new Table(Identity!, columns, constraints, Description, PhysicalOptions);
     }
 }

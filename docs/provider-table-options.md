@@ -71,3 +71,13 @@ The shared key/index cases explicitly choose rowstore and a compatible shard key
 comment cases verify persisted catalog values. Direction evidence comes from
 `SHOW CREATE TABLE`, not `STATISTICS.COLLATION`, which can contain a character
 collation rather than MySQL A/D. Real-database tests run only on .NET 10.
+
+## Explicit UNIQUE policies
+
+Declare table-level unique tuples with `WithConstraints(keys => keys.AddUnique(key => key.WithName("uq_pair").WithColumnNames("second", "first").WithNullPolicy(UniqueNullPolicy.NullsDistinct)))`. Declaration and member order are preserved.
+
+`IUniqueConstraintSqlRenderer` is an opt-in extension of the dialect's schema renderer. Its context includes the containing table, canonical member columns with nullability and generation, physical table options, explicit indexes, and a deterministic name suggestion. Use the declared name when present and apply provider-specific identifier rules to generated names. Return null if the requested policy or table options cannot be honored.
+
+A native plan supplies one trusted definition inside `CREATE TABLE`. An index plan supplies one or more trusted, independently executable index statements in order, each with its qualified identity and script terminator. Schema emits these after creating the owning table and before deferred foreign keys. The provider reports whether the resulting ordered tuple can serve as a foreign-key target under its inline or deferred DDL rules. The existing table and column renderers receive only the legacy keys they own.
+
+Discovery readers can implement `IUniqueConstraintMetadataReader` to report a known policy and the exact identities of indexes owned by a UNIQUE declaration. Schema omits only confirmed backing indexes from the independent index list. An ambiguous ownership claim or an overlapping unique index with unknown semantics produces `SDI010` under the existing strict/partial result rules.

@@ -37,6 +37,8 @@ public class CreateSchemaRenderer : RendererEngine
         AddFormatter("regex", value => RenderRegex(value, dialect));
         AddFormatter("columntype", value => RenderColumnType(value, dialect, nativeTypes));
         AddFormatter("columnspec", value => RenderColumnSpecification(value, dialect, nativeTypes));
+        AddFormatter("uniqueindexcommands", value => includeIdentityPrerequisites && value is TableViewModel table
+            ? string.Concat(table.ExplicitUniqueIndexes.Select(command => command.CommandText + Environment.NewLine)) : "");
     }
 
     private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting, bool includeIdentityPrerequisites)
@@ -44,7 +46,12 @@ public class CreateSchemaRenderer : RendererEngine
         var helpers = CreateHelpers(dialect);
         helpers.Add("identityprerequisites", value =>
         {
-            if (value is TableViewModel table) PrepareColumnPlans(table, dialect, nativeTypes);
+            if (value is TableViewModel table)
+            {
+                if (table.RequiresExplicitUniquePlan && !table.ExplicitUniqueConstraintsPlanned)
+                    throw new NotSupportedException("Explicit UNIQUE constraints require schema-level planning.");
+                PrepareColumnPlans(table, dialect, nativeTypes);
+            }
             return includeIdentityPrerequisites ? RenderIdentityPrerequisites(value, dialect, dropExisting) : "";
         });
         return helpers;
@@ -194,6 +201,7 @@ public class CreateSchemaRenderer : RendererEngine
         : base(typeof(CreateSchemaRenderer).Assembly, $"{typeof(CreateSchemaRenderer).Namespace}.Templates.CreateTables.sql.hbs")
     {
         AddFormatter("tabledescription", _ => "");
+        AddFormatter("uniqueindexcommands", _ => "");
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");
         AddMappings("dbtype", typeMapper.ToDictionary());

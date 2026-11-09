@@ -126,6 +126,7 @@ public class SchemaScriptRenderer
         ValidateForeignKeys(schema, tables);
         MarkUniqueIndexColumns(schema, tables);
         TableDefinitionPlanning.Apply(Dialect, schema, tables);
+        UniqueConstraintPlanning.Apply(Dialect, schema, tables);
         return tables;
     }
 
@@ -150,6 +151,7 @@ public class SchemaScriptRenderer
                 }
             }
             commands.Add(new(create.Render(new { model = new { Tables = new[] { table } } }), SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            commands.AddRange(table.ExplicitUniqueIndexes);
         }
     }
 

@@ -5,6 +5,7 @@ using DubUrl.Querying.Dialects.Casters;
 using DubUrl.Querying.Dialects.Functions;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.TypeMapping;
+using DubUrl.Schema.Renderers;
 using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 using ForeignKey = DubUrl.Schema.Constraints.ForeignKeyConstraint;
@@ -21,6 +22,108 @@ public class SchemaSqlRendererExtensionTests
         var builder = new DialectRegistryBuilder();
         builder.AddDialect<TSqlDialect>(["mssql"]);
         source = builder.Build().Get<TSqlDialect>();
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void UniquePlans_ConsumeExplicitTupleOnceAndKeepLegacyTablePlanning(bool useIndex)
+    {
+        var provider = new UniquePlanningRenderer(useIndex);
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider));
+        var table = UniqueTable();
+        var child = new Table("Child", table.Columns.Values.ToArray(),
+            [new ForeignKey("FK_tuple", ["B", "A"], table.Identity, ["B", "A"])]);
+        var schema = new Schema([child, table]);
+        var text = renderer.Render(schema);
+        var commands = renderer.Plan(schema);
+        Assert.Multiple(() =>
+        {
+            Assert.That(provider.Context!.Constraint.Columns.Select(column => column.Name), Is.EqualTo(new[] { "B", "A" }));
+            Assert.That(provider.Context.Constraint.Columns[0], Is.SameAs(table.Columns["B"]));
+            Assert.That(provider.Context.Constraint.Columns[0].Constraints.Get<NullableConstraint>(), Is.Not.Null);
+            Assert.That(provider.Context.SuggestedName, Is.EqualTo("UQ_Pair_2"));
+            Assert.That(provider.LegacyKeys, Is.EqualTo(new[] { "Legacy" }));
+            Assert.That(text.Split("LEGACY_UNIQUE").Length, Is.EqualTo(2));
+            Assert.That(text.Split("EXPLICIT_UNIQUE").Length, Is.EqualTo(2));
+            Assert.That(commands.Count(command => command.CommandText.Contains("EXPLICIT_UNIQUE", StringComparison.Ordinal)), Is.EqualTo(1));
+            Assert.That(commands.Select(command => command.Operation), Is.EqualTo(useIndex
+                ? new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateIndex, SchemaSqlOperation.ForeignKey }
+                : new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey }));
+            Assert.That(text.IndexOf("EXPLICIT_UNIQUE", StringComparison.Ordinal),
+                Is.LessThan(text.IndexOf("FOREIGN KEY", StringComparison.Ordinal)));
+        });
+    }
+
+    [TestCase("unsupported", "requires a provider plan")]
+    [TestCase("mismatch", "cannot be enforced")]
+    [TestCase("overlap", "overlaps a separate unique index")]
+    [TestCase("collision", "ambiguous backing index name")]
+    [TestCase("ineligible", "no eligible planned UNIQUE target")]
+    [TestCase("reordered", "no eligible planned UNIQUE target")]
+    public void UniquePlans_RejectUnsupportedOrAmbiguousEnforcement(string failure, string message)
+    {
+        var table = UniqueTable();
+        var targets = failure == "reordered" ? new[] { "A", "B" } : new[] { "B", "A" };
+        var child = new Table("Child", table.Columns.Values.ToArray(),
+            [new ForeignKey("FK_tuple", ["B", "A"], table.Identity, targets)]);
+        Index[] indexes = failure switch
+        {
+            "overlap" => [new Index("separate", table.Name, [new("A"), new("B")], true)],
+            "collision" => [new Index("existing", table.Name, [new("A")])],
+            _ => []
+        };
+        var dialect = failure == "unsupported" ? source : new ProviderDialect(source,
+            new UniquePlanningRenderer(true, failure != "ineligible", failure == "mismatch",
+                failure == "collision" ? "existing" : null));
+        var renderer = new SchemaScriptRenderer(dialect);
+        var schema = new Schema([child, table], indexes);
+        Assert.That(() => renderer.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains(message));
+        Assert.That(() => renderer.Render(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains(message));
+    }
+
+    [Test]
+    public void UniquePlans_PrimaryKeyEquivalentTupleNeedsNoProviderPlan()
+    {
+        var a = new Column("A", DbType.Int32);
+        var b = new Column("B", DbType.Int32);
+        var table = new Table("Pair", [a, b],
+            [new PrimaryKeyConstraint([a, b]), new UniquenessConstraint([b, a], "Redundant", UniqueNullPolicy.NullsNotDistinct)]);
+        var sql = new SchemaScriptRenderer(source).Render(new([table]));
+        Assert.That(sql, Does.Contain("PRIMARY KEY").And.Not.Contain("UNIQUE"));
+    }
+
+    private static Table UniqueTable()
+    {
+        var a = new Column("A", DbType.Int32, constraints: [new NotNullableConstraint()]);
+        var b = new Column("B", DbType.Int32, constraints: [new NullableConstraint()]);
+        return new Table("Pair", [a, b],
+            [new UniquenessConstraint([a], "Legacy"), new UniquenessConstraint([b, a], null, UniqueNullPolicy.NullsDistinct)]);
+    }
+
+    private sealed class UniquePlanningRenderer(bool useIndex, bool canReference = true, bool mismatch = false, string? backingName = null)
+        : StandardSchemaSqlRenderer, IUniqueConstraintSqlRenderer, ITableDefinitionSqlRenderer
+    {
+        public UniqueConstraintContext? Context { get; private set; }
+        public string?[]? LegacyKeys { get; private set; }
+
+        public UniqueConstraintPlan PlanUniqueConstraint(IDialect dialect, UniqueConstraintContext context)
+        {
+            Context = context;
+            var policy = mismatch ? UniqueNullPolicy.Native : context.Constraint.NullPolicy;
+            return useIndex
+                ? new UniqueIndexPlan(policy, canReference, [new(new(backingName ?? context.SuggestedName), "CREATE EXPLICIT_UNIQUE INDEX;")])
+                : new NativeUniqueConstraintPlan(policy, canReference, "EXPLICIT_UNIQUE ([B], [A])");
+        }
+
+        public TableDefinitionPlan RenderTableDefinition(IDialect dialect, TableDefinitionContext table)
+        {
+            var keys = table.UniqueKeys ?? [];
+            if (table.Table.Name == "Pair")
+                LegacyKeys = keys.Select(key => key.Name).ToArray();
+            return new("CREATE TABLE", keys.Select(_ => "LEGACY_UNIQUE ([A])").ToArray());
+        }
+
+        public string RenderCreateIndex(IDialect dialect, IndexDefinitionContext index) => throw new NotSupportedException();
     }
 
     [Test]

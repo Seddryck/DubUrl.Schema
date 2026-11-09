@@ -32,6 +32,9 @@
 {{#each ProviderDefinitions}}
     , {{{this}}}
 {{/each~}}
+{{#each ExplicitUniqueDefinitions}}
+    , {{{this}}}
+{{/each~}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
 {{/each~}}
@@ -51,4 +54,5 @@
 {{/each}}
 {{/if~}}
 ){{tabledescription this}};
+{{uniqueindexcommands this~}}
 {{/each}}

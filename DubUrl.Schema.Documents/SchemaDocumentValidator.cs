@@ -253,8 +253,70 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         }
 
         ValidatePrimaryKey(table.PrimaryKey, tablePath, columnLookup, diagnostics);
+        ValidateUniqueConstraints(table, tablePath, columnLookup, diagnostics);
         ValidateChecks(table.Checks ?? [], $"{tablePath}.checks", columns, diagnostics);
         ValidateForeignKeys(table.ForeignKeys ?? [], tablePath, columnLookup, tables, diagnostics);
+    }
+
+    private static void ValidateUniqueConstraints(TableDocument table, string tablePath,
+        IReadOnlyDictionary<string, ColumnDocument> columns, List<SchemaDocumentDiagnostic> diagnostics)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+        var otherNames = (table.Checks ?? []).Select(check => check?.Name)
+            .Concat((table.ForeignKeys ?? []).Select(key => key?.Name))
+            .Concat(columns.Values.SelectMany(column => (column.Checks ?? []).Select(check => check?.Name)))
+            .Append(table.PrimaryKey?.Name).OfType<string>();
+        names.UnionWith(otherNames);
+
+        var primary = (table.PrimaryKey?.Columns ?? []).ToHashSet(StringComparer.Ordinal);
+        var keys = columns.Where(column => column.Value.Unique is true && !primary.SetEquals([column.Key]))
+            .Select(column => new UniqueConstraintDocument { Columns = [column.Key] }).ToList();
+        var declarations = table.UniqueConstraints;
+        if (declarations is null)
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                "The UNIQUE declarations must be an array.", $"{tablePath}.uniqueConstraints"));
+            return;
+        }
+        for (var index = 0; index < declarations.Count; index++)
+        {
+            var key = declarations[index];
+            var path = $"{tablePath}.uniqueConstraints[{index}]";
+            if (key is null)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue, "A UNIQUE declaration is required.", path));
+                continue;
+            }
+            if (key.Name is not null && (string.IsNullOrWhiteSpace(key.Name) || !names.Add(key.Name)))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                    "A UNIQUE constraint name must be nonblank and unambiguous within its table.", $"{path}.name"));
+            }
+            if (!UniqueNullPolicyNames.IsValid(key.NullPolicy))
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet, "Unknown UNIQUE null policy.", $"{path}.nullPolicy"));
+            if (key.Columns is null || key.Columns.Count == 0)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                    "A UNIQUE constraint must reference at least one column.", $"{path}.columns"));
+                continue;
+            }
+            ValidateColumnReferences(key.Columns, $"{path}.columns", columns, diagnostics, "UNIQUE constraint");
+            var members = key.Columns.ToHashSet(StringComparer.Ordinal);
+            if (primary.SetEquals(members) || !UniqueNullPolicyNames.IsValid(key.NullPolicy))
+                continue;
+            if (keys.Any(other => members.SetEquals(other.Columns)
+                && UniqueNullPolicyNames.Parse(key.NullPolicy) != UniqueNullPolicyNames.Parse(other.NullPolicy)))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                    "UNIQUE constraints for the same tuple have conflicting null policies.", $"{path}.nullPolicy"));
+            }
+            if (key.Name is null && keys.Any(other => other.Name is null && key.Columns.SequenceEqual(other.Columns, StringComparer.Ordinal)))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
+                    "Unnamed UNIQUE declarations for the same ordered tuple are ambiguous.", path));
+            }
+            keys.Add(key);
+        }
     }
 
     private void ValidateColumn(

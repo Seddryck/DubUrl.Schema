@@ -55,14 +55,72 @@ public class Table
                 .ToArray();
         }
 
-        foreach (var unique in tableConstraints.OfType<UniquenessConstraint>())
+        for (var index = 0; index < tableConstraints.Length; index++)
         {
-            if (unique.Columns.Count == 0)
-                throw new ArgumentException($"Table '{Name}' UNIQUE constraint requires explicit columns.", nameof(constraints));
-            if (unique.Columns.Any(column => !Columns.ContainsKey(column.Name)))
-                throw new ArgumentException($"Table '{Name}' UNIQUE constraint references an unknown column.", nameof(constraints));
+            if (tableConstraints[index] is not UniquenessConstraint unique)
+                continue;
+            if (unique.Columns.Count == 0 || unique.Columns.Any(column => !Columns.ContainsKey(column.Name)))
+                throw new ArgumentException($"Table '{Name}' UNIQUE constraint requires existing columns.", nameof(constraints));
+            if (ReferenceEquals(tableConstraints, constraints))
+                tableConstraints = tableConstraints.ToArray();
+            tableConstraints[index] = new UniquenessConstraint(
+                unique.Columns.Select(column => Columns[column.Name]).ToArray(), unique.Name, unique.NullPolicy);
         }
         Constraints = new(tableConstraints);
+        ValidateUniqueConstraints();
         Description = string.IsNullOrWhiteSpace(description) ? null : description;
+    }
+
+    internal IEnumerable<UniquenessConstraint> EffectiveTableUniqueConstraints()
+    {
+        var primaryColumns = PrimaryKeyColumns();
+        var namedColumnKeys = Columns.Values
+            .SelectMany(column => column.Constraints.OfType<UniquenessConstraint>()
+                .Where(key => key.Name is not null)
+                .Select(key => new UniquenessConstraint([column], key.Name)));
+        return Constraints.OfType<UniquenessConstraint>().Concat(namedColumnKeys)
+            .Where(unique => !primaryColumns.SetEquals(unique.Columns.Select(column => column.Name)));
+    }
+
+    internal HashSet<string> PrimaryKeyColumns()
+        => Constraints.Get<PrimaryKeyConstraint>()?.Columns.Keys.ToHashSet(StringComparer.Ordinal)
+            ?? Columns.Values.Where(column => column.Constraints.Get<PrimaryKeyConstraint>() is not null)
+                .Select(column => column.Name).ToHashSet(StringComparer.Ordinal);
+
+    private void ValidateUniqueConstraints()
+    {
+        var columnConstraints = Columns.Values.SelectMany(column => column.Constraints.OfType<Constraint>()).ToArray();
+        var nameCollision = Constraints.OfType<Constraint>().Concat(columnConstraints)
+            .Where(constraint => constraint.Name is not null)
+            .GroupBy(constraint => constraint.Name, StringComparer.Ordinal)
+            .FirstOrDefault(group => group.Count() > 1 && group.Any(constraint => constraint is UniquenessConstraint));
+        if (nameCollision is not null)
+            throw new ArgumentException($"Constraint name '{nameCollision.Key}' is ambiguous on table '{Name}'.");
+
+        var primaryColumns = PrimaryKeyColumns();
+        var keys = EffectiveTableUniqueConstraints().ToList();
+        foreach (var column in Columns.Values)
+        {
+            var unique = column.Constraints.OfType<UniquenessConstraint>().ToArray();
+            if (unique.Length > 1 || unique.Any(key => key.Columns.Count > 0))
+                throw new ArgumentException($"Column '{column.Name}' on table '{Name}' has incompatible inline UNIQUE declarations.");
+            if (unique is [{ Name: null }] && !primaryColumns.SetEquals([column.Name]))
+                keys.Add(new UniquenessConstraint([column]));
+        }
+
+        for (var index = 0; index < keys.Count; index++)
+        {
+            var key = keys[index];
+            var members = key.Columns.Select(column => column.Name).ToArray();
+            var memberSet = members.ToHashSet(StringComparer.Ordinal);
+            foreach (var other in keys.Take(index))
+            {
+                var otherMembers = other.Columns.Select(column => column.Name);
+                if (key.NullPolicy != other.NullPolicy && memberSet.SetEquals(otherMembers))
+                    throw new ArgumentException($"Table '{Name}' has conflicting UNIQUE null policies for the same tuple.");
+                if (key.Name is null && other.Name is null && members.SequenceEqual(otherMembers, StringComparer.Ordinal))
+                    throw new ArgumentException($"Table '{Name}' has ambiguous unnamed UNIQUE declarations for the same tuple.");
+            }
+        }
     }
 }

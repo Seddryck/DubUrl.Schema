@@ -112,6 +112,41 @@ public class SchemaInspectorTests
 
     [TestCase(false)]
     [TestCase(true)]
+    public void Map_ExplicitNullPolicy_SuppressesOnlyProviderConfirmedBackingIndex(bool confirmed)
+    {
+        var backing = new MetadataName("pair_index");
+        var metadata = Table() with
+        {
+            Indexes = [
+                new(backing, [new("second"), new("first")], true),
+                new(new("other_index"), [new("second")], true)]
+        };
+        var reader = new UniqueMetadata(confirmed ? backing : null);
+        var inspector = new SchemaInspector();
+        var result = inspector.Map(Metadata(metadata), new() { Features = Features }, default, reader);
+        Assert.That(result.IsComplete, Is.EqualTo(confirmed));
+        Assert.That(result.IsSuccess, Is.EqualTo(confirmed));
+        Assert.That(result.Schema!.Tables.Values.Single().Constraints.OfType<UniquenessConstraint>().First().NullPolicy,
+            Is.EqualTo(UniqueNullPolicy.NullsDistinct));
+        Assert.That(result.Schema.Indexes.Count, Is.EqualTo(confirmed ? 1 : 2));
+        if (!confirmed)
+        {
+            Assert.That(result.Diagnostics.Select(item => item.Code), Is.EqualTo(new[] { "SDI010" }));
+            Assert.That(result.Coverage[SchemaFeature.Indexes], Is.EqualTo(MetadataCoverage.Unrepresentable));
+            var partial = inspector.Map(Metadata(metadata), new() { Features = Features, AllowPartial = true }, default, reader);
+            Assert.That(partial.IsSuccess, Is.True);
+            Assert.That(partial.IsComplete, Is.False);
+        }
+    }
+
+    private sealed class UniqueMetadata(MetadataName? backing) : IUniqueConstraintMetadataReader
+    {
+        public UniqueConstraintMetadata? GetUniqueConstraintMetadata(MetadataTable table, MetadataKey key)
+            => key.Name == "unique_pair" ? new(UniqueNullPolicy.NullsDistinct, backing is null ? null : [backing]) : null;
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
     public void Map_UniqueConstraints_PreserveUnsupportedDiagnosticsAndPartialBehavior(bool partial)
     {
         var diagnostic = new DiscoveryDiagnostic("SDI009", SchemaFeature.Indexes, MetadataCoverage.Unrepresentable,
