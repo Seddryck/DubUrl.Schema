@@ -261,13 +261,7 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
     private static void ValidateUniqueConstraints(TableDocument table, string tablePath,
         IReadOnlyDictionary<string, ColumnDocument> columns, List<SchemaDocumentDiagnostic> diagnostics)
     {
-        var names = new HashSet<string>(StringComparer.Ordinal);
-        var otherNames = (table.Checks ?? []).Select(check => check?.Name)
-            .Concat((table.ForeignKeys ?? []).Select(key => key?.Name))
-            .Concat(columns.Values.SelectMany(column => (column.Checks ?? []).Select(check => check?.Name)))
-            .Append(table.PrimaryKey?.Name).OfType<string>();
-        names.UnionWith(otherNames);
-
+        var names = OtherConstraintNames(table, columns);
         var primary = (table.PrimaryKey?.Columns ?? []).ToHashSet(StringComparer.Ordinal);
         var keys = columns.Where(column => column.Value.Unique is true && !primary.SetEquals([column.Key]))
             .Select(column => new UniqueConstraintDocument { Columns = [column.Key] }).ToList();
@@ -287,35 +281,54 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue, "A UNIQUE declaration is required.", path));
                 continue;
             }
-            if (key.Name is not null && (string.IsNullOrWhiteSpace(key.Name) || !names.Add(key.Name)))
-            {
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
-                    "A UNIQUE constraint name must be nonblank and unambiguous within its table.", $"{path}.name"));
-            }
-            if (!UniqueNullPolicyNames.IsValid(key.NullPolicy))
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet, "Unknown UNIQUE null policy.", $"{path}.nullPolicy"));
-            if (key.Columns is null || key.Columns.Count == 0)
-            {
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
-                    "A UNIQUE constraint must reference at least one column.", $"{path}.columns"));
+            if (!ValidateUniqueDeclaration(key, path, columns, names, diagnostics) || primary.SetEquals(key.Columns))
                 continue;
-            }
-            ValidateColumnReferences(key.Columns, $"{path}.columns", columns, diagnostics, "UNIQUE constraint");
-            var members = key.Columns.ToHashSet(StringComparer.Ordinal);
-            if (primary.SetEquals(members) || !UniqueNullPolicyNames.IsValid(key.NullPolicy))
-                continue;
-            if (keys.Any(other => members.SetEquals(other.Columns)
-                && UniqueNullPolicyNames.Parse(key.NullPolicy) != UniqueNullPolicyNames.Parse(other.NullPolicy)))
-            {
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
-                    "UNIQUE constraints for the same tuple have conflicting null policies.", $"{path}.nullPolicy"));
-            }
-            if (key.Name is null && keys.Any(other => other.Name is null && key.Columns.SequenceEqual(other.Columns, StringComparer.Ordinal)))
-            {
-                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
-                    "Unnamed UNIQUE declarations for the same ordered tuple are ambiguous.", path));
-            }
+            ValidateUniqueTuple(key, path, keys, diagnostics);
             keys.Add(key);
+        }
+    }
+
+    private static HashSet<string> OtherConstraintNames(TableDocument table, IReadOnlyDictionary<string, ColumnDocument> columns)
+        => (table.Checks ?? []).Select(check => check?.Name)
+            .Concat((table.ForeignKeys ?? []).Select(key => key?.Name))
+            .Concat(columns.Values.SelectMany(column => (column.Checks ?? []).Select(check => check?.Name)))
+            .Append(table.PrimaryKey?.Name).OfType<string>().ToHashSet(StringComparer.Ordinal);
+
+    private static bool ValidateUniqueDeclaration(UniqueConstraintDocument key, string path,
+        IReadOnlyDictionary<string, ColumnDocument> columns, HashSet<string> names, List<SchemaDocumentDiagnostic> diagnostics)
+    {
+        if (key.Name is not null && (string.IsNullOrWhiteSpace(key.Name) || !names.Add(key.Name)))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                "A UNIQUE constraint name must be nonblank and unambiguous within its table.", $"{path}.name"));
+        }
+        var validPolicy = UniqueNullPolicyNames.IsValid(key.NullPolicy);
+        if (!validPolicy)
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet, "Unknown UNIQUE null policy.", $"{path}.nullPolicy"));
+        if (key.Columns is not { Count: > 0 })
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                "A UNIQUE constraint must reference at least one column.", $"{path}.columns"));
+            return false;
+        }
+        ValidateColumnReferences(key.Columns, $"{path}.columns", columns, diagnostics, "UNIQUE constraint");
+        return validPolicy;
+    }
+
+    private static void ValidateUniqueTuple(UniqueConstraintDocument key, string path,
+        List<UniqueConstraintDocument> keys, List<SchemaDocumentDiagnostic> diagnostics)
+    {
+        var members = key.Columns.ToHashSet(StringComparer.Ordinal);
+        var policy = UniqueNullPolicyNames.Parse(key.NullPolicy);
+        if (keys.Any(other => members.SetEquals(other.Columns) && policy != UniqueNullPolicyNames.Parse(other.NullPolicy)))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                "UNIQUE constraints for the same tuple have conflicting null policies.", $"{path}.nullPolicy"));
+        }
+        if (key.Name is null && keys.Any(other => other.Name is null && key.Columns.SequenceEqual(other.Columns, StringComparer.Ordinal)))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.DuplicateReference,
+                "Unnamed UNIQUE declarations for the same ordered tuple are ambiguous.", path));
         }
     }
 

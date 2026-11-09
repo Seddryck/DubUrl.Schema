@@ -93,12 +93,23 @@ public sealed class SchemaDocumentExporter
             }
         }
 
+        MapInlineUniqueKeys(table, result);
+        NormalizePrimaryKey(table, result);
+        return result;
+    }
+
+    private static void MapInlineUniqueKeys(Table table, TableDocument result)
+    {
         foreach (var column in table.Columns.Values)
         {
             var unique = column.Constraints.Get<UniquenessConstraint>();
             if (unique?.Name is not null)
                 result.UniqueConstraints.Add(new() { Name = unique.Name, Columns = [column.Name] });
         }
+    }
+
+    private static void NormalizePrimaryKey(Table table, TableDocument result)
+    {
         if (result.PrimaryKey is null)
         {
             var inlineKeys = table.Columns.Values.Where(column => column.Constraints.Get<PrimaryKeyConstraint>() is not null).ToArray();
@@ -112,7 +123,6 @@ public sealed class SchemaDocumentExporter
             if (table.Columns[column.Name!].Constraints.Get<NullableConstraint>() is null)
                 column.Nullable = false;
         }
-        return result;
     }
 
     private static ColumnDocument Column(Column column)
