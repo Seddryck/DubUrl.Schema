@@ -22,8 +22,11 @@ public sealed record ColumnDefaultContext(DatabaseObjectName Table, Column Colum
 /// <param name="RequiredTextCapacity">Maximum context value size in the destination's length units, including any encoding requirements.</param>
 /// <param name="MayReturnNull">Whether a context expression can yield NULL for this route.</param>
 /// <param name="EquivalentContext">A different context kind that is an explicitly confirmed semantic alias on this route.</param>
+/// <param name="UuidSemantics">Optional provider guarantees for UUID generation.</param>
 public sealed record ColumnDefaultPlan(string Sql, int? RequiredTextCapacity = null, bool? MayReturnNull = null,
-    ColumnDefaultKind? EquivalentContext = null);
+    ColumnDefaultKind? EquivalentContext = null, UuidGenerationSemantics? UuidSemantics = null);
+
+public sealed record UuidGenerationSemantics(int? Version = null, string? Ordering = null, string? Randomness = null);
 
 /// <summary>A typed default could not be planned faithfully.</summary>
 public sealed class ColumnDefaultPlanningException : NotSupportedException

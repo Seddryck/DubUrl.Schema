@@ -55,8 +55,9 @@ Typed literal values use invariant string representations. Binary values are Bas
 | `current-time` | `time`. The time of day in the inserting session. |
 | `current-user`, `session-user` | A string with a declared length that can hold the provider's effective or session authorization identity, respectively. The database may allow the session identity to change. |
 | `current-schema`, `current-database` | A string with a declared length that can hold the inserting session's context. Providers may confirm an alias between the two. A route that can return NULL requires `nullable: true`. |
+| `new-uuid` | Set `representation` to `native` for `guid`, `binary` for exactly 16 bytes, or `canonical-text` for a hyphenated 36-character value. Text needs at least 36 characters, or exactly 36 for a fixed-length destination. Binary requires `byteOrder` set to `network` or `dotnet-mixed-endian`. |
 
-Timestamps and time of day accept optional `fractionalSecondsPrecision` from 0 to 9. The provider must honor the requested precision. Omission uses the engine's default precision. Clock evaluation can follow the engine's statement or transaction clock.
+Timestamps and time of day accept optional `fractionalSecondsPrecision` from 0 to 9. The provider must honor the requested precision. Omission uses the engine's default precision. Clock evaluation can follow the engine's statement or transaction clock. UUID version, ordering, and randomness depend on provider guarantees.
 
 Context defaults use a nonnullable destination unless it is explicitly declared nullable.
 

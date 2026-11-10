@@ -17,6 +17,7 @@ internal static class DefaultExpressionMapping
             "session-user" => ColumnDefaultExpression.SessionUser,
             "current-schema" => ColumnDefaultExpression.CurrentSchema,
             "current-database" => ColumnDefaultExpression.CurrentDatabase,
+            "new-uuid" => ColumnDefaultExpression.NewUuid(ParseRepresentation(document.Representation), ParseByteOrder(document.ByteOrder)),
             _ => throw new ArgumentException("The default expression kind is unknown.")
         };
     }
@@ -24,7 +25,8 @@ internal static class DefaultExpressionMapping
     private static void ValidateArguments(DefaultExpressionDocument document)
     {
         var unexpectedPrecision = document.FractionalSecondsPrecision.HasValue && !SupportsFractionalSecondsPrecision(document.Kind);
-        if (unexpectedPrecision)
+        var unexpectedUuidArguments = document.Kind != "new-uuid" && (document.Representation ?? document.ByteOrder) is not null;
+        if (unexpectedPrecision || unexpectedUuidArguments)
         {
             throw new ArgumentException("The default expression has arguments that do not apply to its kind.");
         }
@@ -32,6 +34,22 @@ internal static class DefaultExpressionMapping
 
     private static bool SupportsFractionalSecondsPrecision(string? kind)
         => kind is "current-timestamp" or "current-utc-timestamp" or "current-time";
+
+    private static UuidRepresentation ParseRepresentation(string? value) => value switch
+    {
+        "native" => UuidRepresentation.Native,
+        "binary" => UuidRepresentation.Binary,
+        "canonical-text" => UuidRepresentation.CanonicalText,
+        _ => throw new ArgumentException("A UUID representation of 'native', 'binary' or 'canonical-text' is required.")
+    };
+
+    private static UuidByteOrder? ParseByteOrder(string? value) => value switch
+    {
+        null => null,
+        "network" => UuidByteOrder.Network,
+        "dotnet-mixed-endian" => UuidByteOrder.DotNetMixedEndian,
+        _ => throw new ArgumentException("UUID byte order must be 'network' or 'dotnet-mixed-endian'.")
+    };
 
     internal static DefaultExpressionDocument Export(ColumnDefaultExpression expression) => new()
     {
@@ -45,8 +63,22 @@ internal static class DefaultExpressionMapping
             ColumnDefaultKind.SessionUser => "session-user",
             ColumnDefaultKind.CurrentSchema => "current-schema",
             ColumnDefaultKind.CurrentDatabase => "current-database",
+            ColumnDefaultKind.NewUuid => "new-uuid",
             _ => throw new NotSupportedException("The default expression kind cannot be exported.")
         },
-        FractionalSecondsPrecision = expression.FractionalSecondsPrecision
+        FractionalSecondsPrecision = expression.FractionalSecondsPrecision,
+        Representation = expression.Representation switch
+        {
+            UuidRepresentation.Native => "native",
+            UuidRepresentation.Binary => "binary",
+            UuidRepresentation.CanonicalText => "canonical-text",
+            _ => null
+        },
+        ByteOrder = expression.ByteOrder switch
+        {
+            UuidByteOrder.Network => "network",
+            UuidByteOrder.DotNetMixedEndian => "dotnet-mixed-endian",
+            _ => null
+        }
     };
 }
