@@ -40,7 +40,7 @@ public class Column
         defaultExpression?.ValidateDestination(type, length, precision, scale);
 
         (Name, Type, DefaultValue, DefaultExpression, Constraints, Description, NativeType, NativeTypeFallback, Generation) =
-            (name, type, defaultValue, defaultExpression, new ConstraintCollection(constraints ?? []),
+            (name, type, defaultValue, defaultExpression, CreateConstraints(constraints, defaultExpression),
                 NormalizeDescription(description), nativeType, nativeTypeFallback, generation);
     }
 
@@ -54,6 +54,14 @@ public class Column
             case (not null, _, not null) or (_, not null, not null):
                 throw new ArgumentException("A generated column cannot also define a default value.", nameof(generation));
         }
+    }
+
+    private static ConstraintCollection CreateConstraints(IConstraint[]? constraints, ColumnDefaultExpression? defaultExpression)
+    {
+        constraints ??= [];
+        if (defaultExpression?.IsContext is true && !constraints.Any(constraint => constraint is NullableConstraint or NotNullableConstraint))
+            constraints = [.. constraints, new NotNullableConstraint()];
+        return new ConstraintCollection(constraints);
     }
 
     private static string? NormalizeDescription(string? description)

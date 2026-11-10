@@ -19,7 +19,11 @@ public sealed record ColumnDefaultContext(DatabaseObjectName Table, Column Colum
     TablePhysicalOptions? PhysicalOptions);
 
 /// <param name="Sql">Trusted provider SQL for the expression, without the DEFAULT keyword.</param>
-public sealed record ColumnDefaultPlan(string Sql);
+/// <param name="RequiredTextCapacity">Maximum context value size in the destination's length units, including any encoding requirements.</param>
+/// <param name="MayReturnNull">Whether a context expression can yield NULL for this route.</param>
+/// <param name="EquivalentContext">A different context kind that is an explicitly confirmed semantic alias on this route.</param>
+public sealed record ColumnDefaultPlan(string Sql, int? RequiredTextCapacity = null, bool? MayReturnNull = null,
+    ColumnDefaultKind? EquivalentContext = null);
 
 /// <summary>A typed default could not be planned faithfully.</summary>
 public sealed class ColumnDefaultPlanningException : NotSupportedException

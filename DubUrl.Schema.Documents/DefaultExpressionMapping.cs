@@ -13,6 +13,8 @@ internal static class DefaultExpressionMapping
             "current-date" => ColumnDefaultExpression.CurrentDate,
             "current-time" => ColumnDefaultExpression.CurrentTime(document.FractionalSecondsPrecision),
             "current-utc-timestamp" => ColumnDefaultExpression.CurrentUtcTimestamp(document.FractionalSecondsPrecision),
+            "current-user" => ColumnDefaultExpression.CurrentUser,
+            "session-user" => ColumnDefaultExpression.SessionUser,
             _ => throw new ArgumentException("The default expression kind is unknown.")
         };
     }
@@ -37,6 +39,8 @@ internal static class DefaultExpressionMapping
             ColumnDefaultKind.CurrentDate => "current-date",
             ColumnDefaultKind.CurrentTime => "current-time",
             ColumnDefaultKind.CurrentUtcTimestamp => "current-utc-timestamp",
+            ColumnDefaultKind.CurrentUser => "current-user",
+            ColumnDefaultKind.SessionUser => "session-user",
             _ => throw new NotSupportedException("The default expression kind cannot be exported.")
         },
         FractionalSecondsPrecision = expression.FractionalSecondsPrecision

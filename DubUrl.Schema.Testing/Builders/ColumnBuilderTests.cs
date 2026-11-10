@@ -31,6 +31,7 @@ public class ColumnBuilderTests
     {
         Assert.That(() => ColumnDefaultExpression.CurrentTime(10), Throws.TypeOf<ArgumentOutOfRangeException>());
         Assert.That(() => new Column("value", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTime()), Throws.ArgumentException);
+        Assert.That(() => new Column("value", DbType.String, defaultExpression: ColumnDefaultExpression.CurrentUser), Throws.ArgumentException);
     }
 
     [Test]

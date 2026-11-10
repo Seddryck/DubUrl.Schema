@@ -52,24 +52,55 @@ public class SchemaSqlRendererExtensionTests
         });
     }
 
+    [Test]
+    public void UserDefaults_PreserveEffectiveAndSessionIdentities()
+    {
+        var provider = new DefaultPlanningRenderer((_, context) => context.Column.DefaultExpression!.Kind switch
+        {
+            ColumnDefaultKind.CurrentUser => new("STUB_EFFECTIVE_USER()", 64, false),
+            ColumnDefaultKind.SessionUser => new("STUB_SESSION_USER()", 64, false),
+            _ => null
+        });
+        var table = new Table("records",
+            [ContextColumn("effective_user", ColumnDefaultExpression.CurrentUser), ContextColumn("session_user", ColumnDefaultExpression.SessionUser)]);
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, provider)).Plan(new([table])).Single().CommandText;
+        Assert.That(sql, Does.Contain("DEFAULT STUB_EFFECTIVE_USER()").And.Contain("DEFAULT STUB_SESSION_USER()"));
+        Assert.That(provider.Contexts.Select(context => context.Column.DefaultExpression!.Kind),
+            Is.EqualTo(new[] { ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser }));
+    }
+
     [TestCase("no hook", ColumnDefaultPlanningException.Unsupported)]
     [TestCase("unresolved", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("capacity", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("nullability", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("primary key", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("missing capacity", ColumnDefaultPlanningException.Incomplete)]
+    [TestCase("missing nullability", ColumnDefaultPlanningException.Incomplete)]
     [TestCase("blank SQL", ColumnDefaultPlanningException.Incomplete)]
+    [TestCase("wrong alias", ColumnDefaultPlanningException.Incomplete)]
     public void TypedDefaults_RejectUnsupportedOrIncompletePlans(string reason, string code)
     {
-        var column = new Column("recorded", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp());
-        var table = new Table("records", [column]);
+        var column = ContextColumn("user_name", ColumnDefaultExpression.CurrentUser, nullable: reason != "nullability");
+        var table = new Table("records", [column], reason == "primary key" ? [new PrimaryKeyConstraint([column])] : []);
         var provider = new DefaultPlanningRenderer((_, _) => reason switch
         {
             "unresolved" => null,
-            "blank SQL" => new(" "),
-            _ => new("STUB_UTC()")
+            "capacity" => new("STUB_USER()", 65, false),
+            "missing capacity" => new("STUB_USER()", MayReturnNull: false),
+            "missing nullability" => new("STUB_USER()", RequiredTextCapacity: 64),
+            "blank SQL" => new(" ", 64, false),
+            "wrong alias" => new("STUB_USER()", 64, false, ColumnDefaultKind.CurrentDate),
+            _ => new("STUB_USER()", 64, true)
         });
         var renderer = new SchemaScriptRenderer(reason == "no hook" ? source : new ProviderDialect(source, provider));
         var schema = new Schema([table]);
         Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => renderer.Plan(schema))!.Code, Is.EqualTo(code));
         Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => renderer.Render(schema))!.Code, Is.EqualTo(code));
     }
+
+    private static Column ContextColumn(string name, ColumnDefaultExpression expression, bool nullable = true)
+        => new VarLengthColumn(name, DbType.String, 64,
+            constraints: nullable ? [new NullableConstraint()] : [new NotNullableConstraint()], defaultExpression: expression);
 
     private sealed class DefaultPlanningRenderer(Func<IDialect, ColumnDefaultContext, ColumnDefaultPlan?> plan,
         bool ownsDefault = false) : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer

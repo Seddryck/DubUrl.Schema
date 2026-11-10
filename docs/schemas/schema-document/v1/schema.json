@@ -130,6 +130,10 @@
             {
               "if": { "properties": { "defaultExpression": { "properties": { "kind": { "const": "current-time" } } } } },
               "then": { "properties": { "type": { "const": "time" } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "enum": ["current-user", "session-user"] } } } } },
+              "then": { "required": ["length"], "properties": { "type": { "$ref": "#/$defs/defaultStringDestination" } } }
             }
           ]
         }
@@ -157,6 +161,9 @@
         { "not": { "required": ["defaultExpression", "generated"] } }
       ]
     },
+    "defaultStringDestination": {
+      "enum": ["ansi-string", "ansi-string-fixed-length", "string", "string-fixed-length"]
+    },
     "defaultExpression": {
       "description": "A typed column default with only the arguments allowed for its kind.",
       "type": "object",
@@ -165,7 +172,7 @@
       "properties": {
         "kind": {
           "description": "The symbolic database operation.",
-          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp"]
+          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user"]
         },
         "fractionalSecondsPrecision": {
           "description": "Optional fractional digits for timestamps and time of day. Omit to use the engine's default precision.",
