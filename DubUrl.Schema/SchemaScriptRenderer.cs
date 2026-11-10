@@ -40,7 +40,8 @@ public class SchemaScriptRenderer
             templates.Add(new DropTablesIfExistsRenderer(dialect));
         }
 
-        templates.Add(new CreateSchemaRenderer(dialect, nativeTypes, options == SchemaCreationOptions.DropIfExists));
+        templates.Add(new CreateSchemaRenderer(dialect, nativeTypes, options == SchemaCreationOptions.DropIfExists,
+            includeIdentityPrerequisites: true, defaultsAlreadyPlanned: true));
         templates.Add(new ForeignKeyRenderer(dialect));
         if (CommentRenderer.Supports(dialect))
             templates.Add(new CommentRenderer(dialect));
@@ -128,6 +129,8 @@ public class SchemaScriptRenderer
         MarkUniqueIndexColumns(schema, tables);
         TableDefinitionPlanning.Apply(Dialect, schema, tables);
         UniqueConstraintPlanning.Apply(Dialect, schema, tables);
+        foreach (var table in tables)
+            ColumnDefaultPlanning.Apply(Dialect, NativeTypes, table);
         return tables;
     }
 
@@ -139,7 +142,8 @@ public class SchemaScriptRenderer
 
     private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables, CreateIndexRenderer createIndex)
     {
-        var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting, false);
+        var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting,
+            includeIdentityPrerequisites: false, defaultsAlreadyPlanned: true);
         foreach (var table in tables)
         {
             if (Dialect.SchemaSqlRenderer is ISequenceIdentitySqlRenderer sequence)

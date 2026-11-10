@@ -13,6 +13,27 @@ namespace DubUrl.Schema.Testing.Builders;
 public class ColumnBuilderTests
 {
     [Test]
+    public void Build_TypedDefaultConflictsAreRejectedInEitherOrder()
+    {
+        var expression = ColumnDefaultExpression.CurrentDate;
+        var builder = new ColumnBuilder().WithName("date").WithType(DbType.Date);
+        Assert.That(() => builder.WithDefaultExpression(expression).WithDefaultValue(DBNull.Value).Build(), Throws.ArgumentException);
+        builder = new ColumnBuilder().WithName("date").WithType(DbType.Date);
+        Assert.That(() => builder.WithDefaultValue(DateTime.Today).WithDefaultExpression(expression).Build(), Throws.ArgumentException);
+        builder = new ColumnBuilder().WithName("date").WithType(DbType.Date);
+        Assert.That(() => builder.WithIdentity().WithDefaultExpression(expression).Build(), Throws.ArgumentException);
+        builder = new ColumnBuilder().WithName("date").WithType(DbType.Date);
+        Assert.That(() => builder.WithDefaultExpression(expression).WithGenerated(new ValueExpression(DateTime.Today)).Build(), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void TypedDefaults_RejectInvalidArgumentsAndDestinations()
+    {
+        Assert.That(() => ColumnDefaultExpression.CurrentTime(10), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => new Column("value", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTime()), Throws.ArgumentException);
+    }
+
+    [Test]
     public void Build_Simple_Expected()
     {
         var builder = new ColumnBuilder().WithName("value").WithType(DbType.Boolean);

@@ -11,9 +11,15 @@ public class NumericColumn : Column
     public int Precision { get; }
     public int Scale { get; }
 
+    public NumericColumn(string name, System.Data.DbType type, int precision, int scale, object? defaultValue, IConstraint[]? constraints,
+        string? description, NativeDatabaseType? nativeType, NativeTypeFallback nativeTypeFallback, ColumnGeneration? generation)
+        : this(name, type, precision, scale, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation, null)
+    { }
+
     public NumericColumn(string name, System.Data.DbType type, int precision, int scale, object? defaultValue = null, IConstraint[]? constraints = null,
         string? description = null, NativeDatabaseType? nativeType = null, NativeTypeFallback nativeTypeFallback = NativeTypeFallback.Error,
-        ColumnGeneration? generation = null)
-        : base(name, type, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation)
+        ColumnGeneration? generation = null, ColumnDefaultExpression? defaultExpression = null)
+        : base(name, type, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation,
+            defaultExpression, null, precision, scale)
         => (Precision, Scale) = (precision, scale);
 }

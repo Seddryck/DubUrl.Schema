@@ -25,8 +25,10 @@ public class CreateSchemaRenderer : RendererEngine
         : this(dialect, nativeTypes, dropIdentitySequences, true)
     { }
 
-    internal CreateSchemaRenderer(IDialect dialect, NativeTypeRegistry? nativeTypes, bool dropIdentitySequences, bool includeIdentityPrerequisites)
-        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, nativeTypes ?? NativeTypeRegistry.Default, dropIdentitySequences, includeIdentityPrerequisites))
+    internal CreateSchemaRenderer(IDialect dialect, NativeTypeRegistry? nativeTypes, bool dropIdentitySequences,
+        bool includeIdentityPrerequisites, bool defaultsAlreadyPlanned = false)
+        : this(dialect.DbTypeMapper, dialect.SqlFunctionMapper, CreateSchemaHelpers(dialect, nativeTypes ?? NativeTypeRegistry.Default,
+            dropIdentitySequences, includeIdentityPrerequisites, defaultsAlreadyPlanned))
     {
         nativeTypes ??= NativeTypeRegistry.Default;
         AddFormatter("tabledescription", value => value is TableViewModel { Description: not null } table && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer renderer
@@ -39,7 +41,8 @@ public class CreateSchemaRenderer : RendererEngine
         AddFormatter("columnspec", value => RenderColumnSpecification(value, dialect, nativeTypes));
     }
 
-    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes, bool dropExisting, bool includeIdentityPrerequisites)
+    private static IDictionary<string, Func<object?, string>> CreateSchemaHelpers(IDialect dialect, NativeTypeRegistry nativeTypes,
+        bool dropExisting, bool includeIdentityPrerequisites, bool defaultsAlreadyPlanned)
     {
         var helpers = CreateIndexRenderer.CreateIndexHelpers(dialect);
         helpers.Add("identityprerequisites", value =>
@@ -48,6 +51,8 @@ public class CreateSchemaRenderer : RendererEngine
             {
                 if (table.RequiresExplicitUniquePlan && !table.ExplicitUniqueConstraintsPlanned)
                     throw new NotSupportedException("Explicit UNIQUE constraints require schema-level planning.");
+                if (!defaultsAlreadyPlanned)
+                    ColumnDefaultPlanning.Apply(dialect, nativeTypes, table);
                 PrepareColumnPlans(table, dialect, nativeTypes);
             }
             return includeIdentityPrerequisites ? RenderIdentityPrerequisites(value, dialect, dropExisting) : "";
@@ -90,7 +95,7 @@ public class CreateSchemaRenderer : RendererEngine
         return RenderGeneration(column, dialect, type);
     }
 
-    private static string ResolveColumnType(ColumnViewModel column, IDialect dialect, NativeTypeRegistry nativeTypes)
+    internal static string ResolveColumnType(ColumnViewModel column, IDialect dialect, NativeTypeRegistry nativeTypes)
     {
         var type = RenderColumnType(column, dialect, nativeTypes);
         type = dialect.SchemaSqlRenderer.RenderColumnType(dialect, type, column.DeclaredLength,
@@ -147,7 +152,7 @@ public class CreateSchemaRenderer : RendererEngine
             table.PrimaryKey?.Name ?? column.PrimaryKey?.Name, table.PrimaryKey is not null,
             column.Nullable is not null, column.NotNullable is not null, column.Unique is not null,
             GenerationContext(column, dialect),
-            column.HasDefaultValue ? dialect.Renderer.Render(column.DefaultValue, "value") : null,
+            column.HasDefault ? RenderDefault(column, value => dialect.Renderer.Render(value, "value")) : null,
             column.Checks.Select(check => RenderCheck(check, dialect))
                 .Concat(column.MembershipChecks.Select(check => RenderMembership(check, dialect)))
                 .Concat(column.RegexChecks.Select(check => RenderRegex(check, dialect))).ToArray(), column.Description);
@@ -161,6 +166,12 @@ public class CreateSchemaRenderer : RendererEngine
                 Expression: RenderExpression(generated.Expression, dialect), Stored: generated.Storage == GeneratedColumnStorage.Stored),
             _ => null
         };
+
+    private static string RenderDefault(ColumnViewModel column, Func<object?, string> literalRenderer)
+        => column.Source.DefaultExpression is not null
+            ? column.PlannedDefaultExpression ?? throw new ColumnDefaultPlanningException(
+                ColumnDefaultPlanningException.Incomplete, "The typed default requires provider planning.")
+            : column.DefaultValue is DBNull ? "NULL" : literalRenderer(column.DefaultValue);
 
     private static void ValidateColumnPlan(TableViewModel table, ColumnViewModel column,
         string[] primaryColumns, ColumnDefinitionPlan plan)
@@ -201,6 +212,7 @@ public class CreateSchemaRenderer : RendererEngine
         AddPartial("createIndex", CreateIndexRenderer.StatementTemplate);
         AddPartial("uniqueConstraint", $"{typeof(CreateSchemaRenderer).Namespace}.Templates.UniqueConstraint.sql.hbs");
         AddFormatter("tabledescription", _ => "");
+        AddFormatter("columndefault", value => RenderDefault((ColumnViewModel)value!, helpers["value"]));
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");
         AddMappings("dbtype", typeMapper.ToDictionary());

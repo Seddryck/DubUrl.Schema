@@ -15,6 +15,7 @@ public sealed partial class SchemaDocumentValidator
                 new ColumnIdentityRule(),
                 new ColumnGeneratedRule(),
                 new ColumnDefaultValueRule(),
+                new ColumnDefaultExpressionRule(),
                 new ColumnNativeTypeRule()
             ],
             [
@@ -154,17 +155,30 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             var column = context.Column;
-            var generationCount = (column.Identity is null ? 0 : 1) + (column.Generated is null ? 0 : 1);
-            if (generationCount > 1)
+            if (column is { Identity: not null, Generated: not null })
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
                     "Identity and generated column definitions are mutually exclusive.", context.Path));
             }
 
-            if (column.Default is not null && generationCount > 0)
+            ValidateDefaultExclusivity(column, context.Path, diagnostics);
+        }
+
+        private static void ValidateDefaultExclusivity(ColumnDocument column, string path,
+            ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            if (column is { Default: null, DefaultExpression: null })
+                return;
+            if (column.Identity is not null || column.Generated is not null)
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
-                    "A generated column cannot also define a default value.", context.Path));
+                    "A generated column cannot also define a default value.", path));
+            }
+
+            if (column.Default is not null && column.DefaultExpression is not null)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
+                    "Literal and expression defaults are mutually exclusive.", path));
             }
         }
     }
@@ -233,6 +247,33 @@ public sealed partial class SchemaDocumentValidator
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
                     $"Default literal type '{column.Default.Type}' does not match column type '{column.Type}'.",
                     $"{context.Path}.default.type"));
+            }
+        }
+    }
+
+    private sealed class ColumnDefaultExpressionRule : IValidationRule<ColumnValidationContext>
+    {
+        public string Id => SchemaDocumentValidationRuleIds.Columns.DefaultExpression;
+
+        public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            var column = context.Column;
+            if (column.DefaultExpression is not { } declaration)
+                return;
+            var path = $"{context.Path}.defaultExpression";
+            ColumnDefaultExpression expression;
+            try { expression = DefaultExpressionMapping.Map(declaration); }
+            catch (ArgumentException exception)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidExpression, exception.Message, path));
+                return;
+            }
+
+            if (SchemaDocumentTypes.TryGetDbType(column.Type, out var type))
+            {
+                try { expression.ValidateDestination(type, column.Length, column.Precision, column.Scale); }
+                catch (ArgumentException exception)
+                { diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet, exception.Message, path)); }
             }
         }
     }

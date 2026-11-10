@@ -1,6 +1,7 @@
 using System.Data;
 using DubUrl.Discovery;
 using DubUrl.Schema.Constraints;
+using Moq;
 using NUnit.Framework;
 using ForeignKeyConstraint = DubUrl.Schema.Constraints.ForeignKeyConstraint;
 
@@ -8,6 +9,45 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Inspect_TypedDefaultsPreserveSymbolsAndDiagnoseUnknownWithoutExecutingSql(bool allowPartial)
+    {
+        var features = new[] { SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Defaults };
+        var table = new MetadataTable(new("records"), [
+            new("recorded", 0, DbType.DateTime2, false) { Default = ColumnDefaultExpression.CurrentUtcTimestamp(3) },
+            new("explicit_null", 5, DbType.String, true) { Length = 64, Default = DBNull.Value },
+            new("literal_text", 6, DbType.String, false) { Length = 64, Default = "CURRENT_TIMESTAMP" },
+            new("unknown", 7, DbType.String, true) { Length = 64, Default = new MetadataExpression("unknown", "arbitrary_sql()") },
+            new("incompatible", 8, DbType.Int32, false) { Default = ColumnDefaultExpression.CurrentUtcTimestamp() }
+        ]);
+        var coverage = features.ToDictionary(feature => feature, _ => MetadataCoverage.Available);
+        var reader = new Mock<ISchemaMetadataReader>(MockBehavior.Strict);
+        var connection = new Mock<System.Data.Common.DbConnection>();
+        connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
+        var options = new DiscoveryOptions { Features = features, AllowPartial = allowPartial };
+        reader.Setup(value => value.ReadAsync(connection.Object, options, default)).ReturnsAsync(new SchemaMetadata([table], coverage, []));
+        var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object, options);
+        connection.VerifyGet(value => value.State, Times.Once);
+        connection.VerifyNoOtherCalls();
+
+        var columns = result.Schema!.Tables.Values.Single().Columns;
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComplete, Is.False);
+            Assert.That(result.IsSuccess, Is.EqualTo(allowPartial));
+            Assert.That(result.Coverage[SchemaFeature.Defaults], Is.EqualTo(MetadataCoverage.Unrepresentable));
+            Assert.That(result.Diagnostics.Select(item => item.Code), Is.EqualTo(new[] { "SDI011", "SDI011" }));
+            Assert.That(result.Diagnostics[0].Message, Does.Contain("unknown").And.Not.Contain("arbitrary_sql()"));
+            Assert.That(columns.Values.Take(1).Select(column => column.DefaultExpression),
+                Is.EqualTo(table.Columns.Take(1).Select(column => column.Default)));
+            Assert.That(columns["explicit_null"].DefaultValue, Is.SameAs(DBNull.Value));
+            Assert.That(columns["literal_text"].DefaultValue, Is.EqualTo("CURRENT_TIMESTAMP"));
+            Assert.That(columns["unknown"].DefaultValue, Is.Null);
+            Assert.That(columns["incompatible"].DefaultExpression, Is.Null);
+        });
+    }
+
     [TestCase(null, "main", null)]
     [TestCase("sales", "store", null)]
     [TestCase("sales", "store", "server")]

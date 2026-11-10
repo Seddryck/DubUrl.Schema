@@ -39,11 +39,18 @@ public sealed class ColumnDocument
     public bool? Nullable { get; set; }
     public bool? Unique { get; set; }
     public LiteralDocument? Default { get; set; }
+    public DefaultExpressionDocument? DefaultExpression { get; set; }
     public string? Description { get; set; }
     public NativeTypeDocument? NativeType { get; set; }
     public IdentityColumnDocument? Identity { get; set; }
     public GeneratedColumnDocument? Generated { get; set; }
     public List<CheckDocument> Checks { get; set; } = [];
+}
+
+public sealed class DefaultExpressionDocument
+{
+    public string? Kind { get; set; }
+    public int? FractionalSecondsPrecision { get; set; }
 }
 
 public sealed class NativeTypeDocument

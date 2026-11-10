@@ -82,16 +82,9 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
     private Column MapColumn(ColumnDocument document)
     {
         SchemaDocumentTypes.TryGetDbType(document.Type, out var type);
-        var constraints = new List<IConstraint>();
-        if (document.Nullable is true)
-            constraints.Add(new NullableConstraint());
-        else
-            constraints.Add(new NotNullableConstraint());
-        if (document.Unique is true)
-            constraints.Add(new UniquenessConstraint());
-        constraints.AddRange(document.Checks.Select(MapCheck));
-
-        var defaultValue = document.Default is null ? null : ConvertLiteral(document.Default);
+        var constraints = MapColumnConstraints(document);
+        var defaultValue = document.Default is null ? null : ConvertLiteral(document.Default) ?? DBNull.Value;
+        var defaultExpression = document.DefaultExpression is null ? null : DefaultExpressionMapping.Map(document.DefaultExpression);
         var nativeType = document.NativeType is null ? null : new NativeDatabaseType(document.NativeType.Name!);
         var fallback = document.NativeType?.Fallback == "logical-type"
             ? NativeTypeFallback.LogicalType
@@ -101,15 +94,27 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
         return document switch
         {
             { Length: not null } => new VarLengthColumn(
-                document.Name!, type, document.Length.Value, defaultValue, constraints.ToArray(),
-                document.Description, nativeType, fallback, generation),
+                document.Name!, type, document.Length.Value, defaultValue, constraints,
+                document.Description, nativeType, fallback, generation, defaultExpression),
             { Precision: not null } => new NumericColumn(
                 document.Name!, type, document.Precision.Value, document.Scale ?? 0, defaultValue,
-                constraints.ToArray(), document.Description, nativeType, fallback, generation),
+                constraints, document.Description, nativeType, fallback, generation, defaultExpression),
             _ => new Column(
-                document.Name!, type, defaultValue, constraints.ToArray(), document.Description,
-                nativeType, fallback, generation)
+                document.Name!, type, defaultValue, constraints, document.Description,
+                nativeType, fallback, generation, defaultExpression)
         };
+    }
+
+    private IConstraint[] MapColumnConstraints(ColumnDocument document)
+    {
+        var constraints = new List<IConstraint>
+        {
+            document.Nullable is true ? new NullableConstraint() : new NotNullableConstraint()
+        };
+        if (document.Unique is true)
+            constraints.Add(new UniquenessConstraint());
+        constraints.AddRange(document.Checks.Select(MapCheck));
+        return constraints.ToArray();
     }
 
     private ColumnGeneration? MapGeneration(ColumnDocument document)
@@ -199,6 +204,6 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
                     MapExpression(projection.Expression),
                     projection.Alias)).ToArray()));
 
-    private static DatabaseObjectName MapIdentity(DatabaseObjectNameDocument document)
+    internal static DatabaseObjectName MapIdentity(DatabaseObjectNameDocument document)
         => new(document.Name!, document.Schema, document.Database, document.Catalog);
 }

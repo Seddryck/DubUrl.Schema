@@ -1,0 +1,54 @@
+using System.Data;
+
+namespace DubUrl.Schema;
+
+public enum ColumnDefaultKind
+{
+    CurrentTimestamp,
+    CurrentDate,
+    CurrentTime,
+    CurrentUtcTimestamp
+}
+
+/// <summary>An allowlisted database expression evaluated when an INSERT uses the column default.</summary>
+public sealed record ColumnDefaultExpression
+{
+    public ColumnDefaultKind Kind { get; }
+    public int? FractionalSecondsPrecision { get; }
+
+    private ColumnDefaultExpression(ColumnDefaultKind kind, int? fractionalSecondsPrecision = null)
+    {
+        if (fractionalSecondsPrecision is < 0 or > 9)
+            throw new ArgumentOutOfRangeException(nameof(fractionalSecondsPrecision), "Fractional seconds precision must be between 0 and 9.");
+        Kind = kind;
+        FractionalSecondsPrecision = fractionalSecondsPrecision;
+    }
+
+    /// <summary>Session-local timestamp, with the session offset when the destination carries an offset.</summary>
+    public static ColumnDefaultExpression CurrentTimestamp(int? fractionalSecondsPrecision = null)
+        => new(ColumnDefaultKind.CurrentTimestamp, fractionalSecondsPrecision);
+
+    public static ColumnDefaultExpression CurrentDate { get; } = new(ColumnDefaultKind.CurrentDate);
+
+    /// <summary>Session-local time of day.</summary>
+    public static ColumnDefaultExpression CurrentTime(int? fractionalSecondsPrecision = null)
+        => new(ColumnDefaultKind.CurrentTime, fractionalSecondsPrecision);
+
+    /// <summary>UTC timestamp independent of session and server time zones, with offset zero when stored with an offset.</summary>
+    public static ColumnDefaultExpression CurrentUtcTimestamp(int? fractionalSecondsPrecision = null)
+        => new(ColumnDefaultKind.CurrentUtcTimestamp, fractionalSecondsPrecision);
+
+    internal void ValidateDestination(DbType type, int? length, int? precision, int? scale)
+    {
+        var compatible = Kind switch
+        {
+            ColumnDefaultKind.CurrentTimestamp or ColumnDefaultKind.CurrentUtcTimestamp =>
+                type is DbType.DateTime or DbType.DateTime2 or DbType.DateTimeOffset,
+            ColumnDefaultKind.CurrentDate => type == DbType.Date,
+            ColumnDefaultKind.CurrentTime => type == DbType.Time,
+            _ => false
+        };
+        if (!compatible)
+            throw new ArgumentException($"The column type or facets are incompatible with the {Kind} default.");
+    }
+}

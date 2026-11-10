@@ -86,7 +86,7 @@ public sealed class SchemaInspector
             {
                 var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
                     .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
-                tables.Add(MapTable(table, selected, diagnostics, unique));
+                tables.Add(MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults)));
                 indexes.AddRange(MapIndexes(table, unique, diagnostics));
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
@@ -143,10 +143,12 @@ public sealed class SchemaInspector
     }
 
     private static Table MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
-        List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys)
+        List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys,
+        bool inspectDefaults)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
-        var columns = table.Columns.OrderBy(column => column.Ordinal).Select(column => MapColumn(column)).ToArray();
+        var columns = table.Columns.OrderBy(column => column.Ordinal)
+            .Select(column => MapColumn(table.Identity, column, diagnostics, inspectDefaults)).ToArray();
         var byName = columns.ToDictionary(column => column.Name, StringComparer.Ordinal);
         var constraints = new List<Constraint>();
         if (table.PrimaryKey is { } pk)
@@ -252,7 +254,28 @@ public sealed class SchemaInspector
             : new IdentityColumnGeneration(g.Seed ?? 1, g.Increment ?? 1);
     }
 
-    private static Column MapColumn(MetadataColumn column)
+    private static Column MapColumn(MetadataName table, MetadataColumn column,
+        List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults)
+    {
+        if (column.Default is ColumnDefaultExpression expression && inspectDefaults)
+        {
+            try { return MapColumn(column, null, expression); }
+            catch (ArgumentException)
+            {
+                diagnostics.Add(new("SDI011", SchemaFeature.Defaults, MetadataCoverage.Unrepresentable,
+                    $"The discovered default for column '{column.Name}' is incompatible with its destination.", table));
+            }
+        }
+        if (column.Default is MetadataExpression && inspectDefaults)
+        {
+            diagnostics.Add(new("SDI011", SchemaFeature.Defaults, MetadataCoverage.Unrepresentable,
+                $"The catalog default for column '{column.Name}' cannot be represented as a typed default.", table));
+        }
+
+        return MapColumn(column, column.Default is ColumnDefaultExpression or MetadataExpression ? null : column.Default);
+    }
+
+    private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression = null)
     {
         if (column.Type is null || column.Nullable is null) throw new NotSupportedException();
         var constraints = new IConstraint[] { column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint() };
@@ -260,10 +283,13 @@ public sealed class SchemaInspector
         var generation = MapGeneration(column);
         var type = column.Type.Value;
         return column.Length is { } length
-            ? new VarLengthColumn(column.Name, type, length, column.Default, constraints, column.Comment, native, generation: generation)
+            ? new VarLengthColumn(column.Name, type, length, defaultValue, constraints, column.Comment, native,
+                generation: generation, defaultExpression: expression)
             : column.Precision is { } precision
-                ? new NumericColumn(column.Name, type, precision, column.Scale ?? 0, column.Default, constraints, column.Comment, native, generation: generation)
-                : new Column(column.Name, type, column.Default, constraints, column.Comment, native, generation: generation);
+                ? new NumericColumn(column.Name, type, precision, column.Scale ?? 0, defaultValue, constraints, column.Comment, native,
+                    generation: generation, defaultExpression: expression)
+                : new Column(column.Name, type, defaultValue, constraints, column.Comment, native,
+                    generation: generation, defaultExpression: expression);
     }
 
     private static Expression Expression(MetadataExpression expression) => expression.Kind switch

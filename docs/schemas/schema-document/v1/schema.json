@@ -103,6 +103,7 @@
         "nullable": { "description": "Whether the column accepts null values.", "type": "boolean", "default": false },
         "unique": { "description": "Whether the column has a single-column unique constraint.", "type": "boolean", "default": false },
         "default": { "description": "A typed literal default value, separate from column generation.", "$ref": "#/$defs/literal" },
+        "defaultExpression": { "description": "An allowlisted expression evaluated when an INSERT uses the default.", "$ref": "#/$defs/defaultExpression" },
         "description": { "description": "Optional human-readable column documentation.", "type": "string" },
         "nativeType": { "description": "An optional provider-native type override and fallback policy.", "$ref": "#/$defs/nativeType" },
         "identity": { "description": "Identity or auto-increment generation settings.", "$ref": "#/$defs/identityColumn" },
@@ -115,6 +116,24 @@
         }
       },
       "dependentRequired": { "scale": ["precision"] },
+      "dependentSchemas": {
+        "defaultExpression": {
+          "allOf": [
+            {
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "enum": ["current-timestamp", "current-utc-timestamp"] } } } } },
+              "then": { "properties": { "type": { "enum": ["datetime", "datetime2", "datetime-offset"] } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "const": "current-date" } } } } },
+              "then": { "properties": { "type": { "const": "date" } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "const": "current-time" } } } } },
+              "then": { "properties": { "type": { "const": "time" } } }
+            }
+          ]
+        }
+      },
       "allOf": [
         {
           "if": { "required": ["length"] },
@@ -132,7 +151,34 @@
         { "not": { "required": ["length", "scale"] } },
         { "not": { "required": ["identity", "generated"] } },
         { "not": { "required": ["default", "identity"] } },
-        { "not": { "required": ["default", "generated"] } }
+        { "not": { "required": ["default", "generated"] } },
+        { "not": { "required": ["defaultExpression", "default"] } },
+        { "not": { "required": ["defaultExpression", "identity"] } },
+        { "not": { "required": ["defaultExpression", "generated"] } }
+      ]
+    },
+    "defaultExpression": {
+      "description": "A typed column default with only the arguments allowed for its kind.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "description": "The symbolic database operation.",
+          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp"]
+        },
+        "fractionalSecondsPrecision": {
+          "description": "Optional fractional digits for timestamps and time of day. Omit to use the engine's default precision.",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["current-timestamp", "current-utc-timestamp", "current-time"] } } },
+          "else": { "not": { "required": ["fractionalSecondsPrecision"] } }
+        }
       ]
     },
     "nativeType": {
