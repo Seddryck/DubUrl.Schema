@@ -107,7 +107,7 @@ The [live database QA suite in DubUrl.Providers](https://github.com/Seddryck/Dub
 
 ## Catalog defaults
 
-`Column.DefaultValue` stores a typed literal. A provider that recognizes a typed expression reports a `ColumnDefaultExpression` in `MetadataColumn.Default`. Schema preserves the expression symbolically. Providers use `DBNull.Value` for an explicit NULL default. An unrecognized catalog expression should be reported as a Defaults diagnostic or a `MetadataExpression` marker, which Schema diagnoses with `SDI011`. Plain strings are treated as literal values. The inspector maps metadata without evaluating catalog SQL.
+`Column.DefaultValue` stores a typed literal. A provider that recognizes a typed expression reports a `ColumnDefaultExpression` in `MetadataColumn.Default`. Schema preserves the expression symbolically, including any external sequence identity. Providers use `DBNull.Value` for an explicit NULL default. An unrecognized catalog expression should be reported as a Defaults diagnostic or a `MetadataExpression` marker, which Schema diagnoses with `SDI011`. Plain strings are treated as literal values. The inspector maps metadata without evaluating catalog SQL or advancing sequences.
 
 Generated columns have a separate structured expression model. Discovery currently recognizes column references, literals, and nested Length/Upper/Lower calls. Operators such as amount * 2 remain unrepresentable by the current expression contract.
 

@@ -53,6 +53,7 @@ public sealed class DefaultExpressionDocument
     public int? FractionalSecondsPrecision { get; set; }
     public string? Representation { get; set; }
     public string? ByteOrder { get; set; }
+    public DatabaseObjectNameDocument? Sequence { get; set; }
 }
 
 public sealed class NativeTypeDocument

@@ -10,7 +10,8 @@ public interface IColumnDefaultSqlRenderer
     /// or unresolved. The provider must preserve the requested precision, time-zone semantics and representation.
     /// </summary>
     /// <remarks>
-    /// Planning must never evaluate a default. The result supplies only the SQL expression that follows DEFAULT.
+    /// An external sequence reference requires component-wise identifier quoting. Planning must never evaluate a default
+    /// or acquire ownership of a sequence. The result supplies only the SQL expression that follows DEFAULT.
     /// </remarks>
     ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context);
 }
