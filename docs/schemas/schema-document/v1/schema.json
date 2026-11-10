@@ -132,7 +132,7 @@
               "then": { "properties": { "type": { "const": "time" } } }
             },
             {
-              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "enum": ["current-user", "session-user"] } } } } },
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "enum": ["current-user", "session-user", "current-schema", "current-database"] } } } } },
               "then": { "required": ["length"], "properties": { "type": { "$ref": "#/$defs/defaultStringDestination" } } }
             }
           ]
@@ -172,7 +172,7 @@
       "properties": {
         "kind": {
           "description": "The symbolic database operation.",
-          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user"]
+          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user", "current-schema", "current-database"]
         },
         "fractionalSecondsPrecision": {
           "description": "Optional fractional digits for timestamps and time of day. Omit to use the engine's default precision.",

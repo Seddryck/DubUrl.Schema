@@ -54,6 +54,7 @@ Typed literal values use invariant string representations. Binary values are Bas
 | `current-date` | `date`. The calendar date in the inserting session. |
 | `current-time` | `time`. The time of day in the inserting session. |
 | `current-user`, `session-user` | A string with a declared length that can hold the provider's effective or session authorization identity, respectively. The database may allow the session identity to change. |
+| `current-schema`, `current-database` | A string with a declared length that can hold the inserting session's context. Providers may confirm an alias between the two. A route that can return NULL requires `nullable: true`. |
 
 Timestamps and time of day accept optional `fractionalSecondsPrecision` from 0 to 9. The provider must honor the requested precision. Omission uses the engine's default precision. Clock evaluation can follow the engine's statement or transaction clock.
 

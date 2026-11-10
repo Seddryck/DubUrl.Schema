@@ -59,7 +59,9 @@ internal static class ColumnDefaultPlanning
 
     private static bool IsValidAlias(ColumnDefaultKind kind, ColumnDefaultKind? alias)
         => alias is null || (kind, alias) is
-            (ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser)
+            (ColumnDefaultKind.CurrentSchema, ColumnDefaultKind.CurrentDatabase)
+            or (ColumnDefaultKind.CurrentDatabase, ColumnDefaultKind.CurrentSchema)
+            or (ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser)
             or (ColumnDefaultKind.SessionUser, ColumnDefaultKind.CurrentUser);
 
     private static void ValidateContext(ColumnDefaultPlan plan, ColumnViewModel column, bool allowsNull, string label)

@@ -52,21 +52,28 @@ public class SchemaSqlRendererExtensionTests
         });
     }
 
-    [Test]
-    public void UserDefaults_PreserveEffectiveAndSessionIdentities()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void ContextDefaults_PreserveDistinctSymbolsAndAcceptExplicitAliases(bool alias)
     {
         var provider = new DefaultPlanningRenderer((_, context) => context.Column.DefaultExpression!.Kind switch
         {
+            ColumnDefaultKind.CurrentSchema => alias
+                ? new("STUB_DATABASE()", 64, true, ColumnDefaultKind.CurrentDatabase)
+                : new("STUB_SCHEMA()", 64, true),
+            ColumnDefaultKind.CurrentDatabase => new("STUB_DATABASE()", 64, true),
             ColumnDefaultKind.CurrentUser => new("STUB_EFFECTIVE_USER()", 64, false),
             ColumnDefaultKind.SessionUser => new("STUB_SESSION_USER()", 64, false),
             _ => null
         });
-        var table = new Table("records",
-            [ContextColumn("effective_user", ColumnDefaultExpression.CurrentUser), ContextColumn("session_user", ColumnDefaultExpression.SessionUser)]);
+        var table = new Table(new DatabaseObjectName("records", "ddl_schema", "ddl_database"),
+            [ContextColumn("scope", ColumnDefaultExpression.CurrentSchema), ContextColumn("db", ColumnDefaultExpression.CurrentDatabase),
+             ContextColumn("effective_user", ColumnDefaultExpression.CurrentUser), ContextColumn("session_user", ColumnDefaultExpression.SessionUser)]);
         var sql = new SchemaScriptRenderer(new ProviderDialect(source, provider)).Plan(new([table])).Single().CommandText;
-        Assert.That(sql, Does.Contain("DEFAULT STUB_EFFECTIVE_USER()").And.Contain("DEFAULT STUB_SESSION_USER()"));
+        Assert.That(sql, Does.Contain($"DEFAULT STUB_{(alias ? "DATABASE" : "SCHEMA")}()")
+            .And.Contain("DEFAULT STUB_DATABASE()").And.Contain("DEFAULT STUB_EFFECTIVE_USER()").And.Contain("DEFAULT STUB_SESSION_USER()"));
         Assert.That(provider.Contexts.Select(context => context.Column.DefaultExpression!.Kind),
-            Is.EqualTo(new[] { ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser }));
+            Is.EqualTo(new[] { ColumnDefaultKind.CurrentSchema, ColumnDefaultKind.CurrentDatabase, ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser }));
     }
 
     [TestCase("no hook", ColumnDefaultPlanningException.Unsupported)]
@@ -80,17 +87,17 @@ public class SchemaSqlRendererExtensionTests
     [TestCase("wrong alias", ColumnDefaultPlanningException.Incomplete)]
     public void TypedDefaults_RejectUnsupportedOrIncompletePlans(string reason, string code)
     {
-        var column = ContextColumn("user_name", ColumnDefaultExpression.CurrentUser, nullable: reason != "nullability");
+        var column = ContextColumn("scope", ColumnDefaultExpression.CurrentSchema, nullable: reason != "nullability");
         var table = new Table("records", [column], reason == "primary key" ? [new PrimaryKeyConstraint([column])] : []);
         var provider = new DefaultPlanningRenderer((_, _) => reason switch
         {
             "unresolved" => null,
-            "capacity" => new("STUB_USER()", 65, false),
-            "missing capacity" => new("STUB_USER()", MayReturnNull: false),
-            "missing nullability" => new("STUB_USER()", RequiredTextCapacity: 64),
+            "capacity" => new("STUB_SCHEMA()", 65, false),
+            "missing capacity" => new("STUB_SCHEMA()", MayReturnNull: false),
+            "missing nullability" => new("STUB_SCHEMA()", RequiredTextCapacity: 64),
             "blank SQL" => new(" ", 64, false),
-            "wrong alias" => new("STUB_USER()", 64, false, ColumnDefaultKind.CurrentDate),
-            _ => new("STUB_USER()", 64, true)
+            "wrong alias" => new("STUB_SCHEMA()", 64, false, ColumnDefaultKind.CurrentUser),
+            _ => new("STUB_SCHEMA()", 64, true)
         });
         var renderer = new SchemaScriptRenderer(reason == "no hook" ? source : new ProviderDialect(source, provider));
         var schema = new Schema([table]);

@@ -9,7 +9,9 @@ public enum ColumnDefaultKind
     CurrentTime,
     CurrentUtcTimestamp,
     CurrentUser,
-    SessionUser
+    SessionUser,
+    CurrentSchema,
+    CurrentDatabase
 }
 
 /// <summary>An allowlisted database expression evaluated when an INSERT uses the column default.</summary>
@@ -46,7 +48,15 @@ public sealed record ColumnDefaultExpression
     /// <summary>Gets the session authorization identity expression, including changes permitted by the database.</summary>
     /// <value>The session-user default.</value>
     public static ColumnDefaultExpression SessionUser { get; } = new(ColumnDefaultKind.SessionUser);
-    internal bool IsContext => Kind is ColumnDefaultKind.CurrentUser or ColumnDefaultKind.SessionUser;
+    /// <summary>Gets the expression for the schema selected by the inserting session.</summary>
+    /// <value>The current-schema default.</value>
+    public static ColumnDefaultExpression CurrentSchema { get; } = new(ColumnDefaultKind.CurrentSchema);
+    /// <summary>Gets the expression for the database selected by the inserting session.</summary>
+    /// <value>The current-database default.</value>
+    public static ColumnDefaultExpression CurrentDatabase { get; } = new(ColumnDefaultKind.CurrentDatabase);
+
+    internal bool IsContext => Kind is ColumnDefaultKind.CurrentUser or ColumnDefaultKind.SessionUser
+        or ColumnDefaultKind.CurrentSchema or ColumnDefaultKind.CurrentDatabase;
 
     internal void ValidateDestination(DbType type, int? length, int? precision, int? scale)
     {

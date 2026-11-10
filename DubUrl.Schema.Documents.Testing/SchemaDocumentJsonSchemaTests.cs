@@ -129,11 +129,14 @@ public class SchemaDocumentJsonSchemaTests
             new("time", DbType.Time, defaultExpression: ColumnDefaultExpression.CurrentTime(0)),
             new("utc_timestamp", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
             new VarLengthColumn("current_user", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentUser),
-            new VarLengthColumn("session_user", DbType.AnsiString, 128, defaultExpression: ColumnDefaultExpression.SessionUser)
+            new VarLengthColumn("session_user", DbType.AnsiString, 128, defaultExpression: ColumnDefaultExpression.SessionUser),
+            new VarLengthColumn("current_schema", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentSchema),
+            new VarLengthColumn("current_database", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentDatabase)
         ];
         var schema = new Schema([new Table("samples", columns)]);
         var exporter = new SchemaDocumentExporter();
         var document = exporter.Map(schema);
+        Assert.That(document.Tables.Single().Columns.Single(column => column.Name == "current_database").Nullable, Is.False);
         using var stream = new MemoryStream();
         new SchemaDocumentWriter().Write(stream, document, format);
         if (format == SchemaDocumentFormat.Json)
@@ -151,6 +154,8 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"current-date\",\"fractionalSecondsPrecision\":0}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"datetime-offset\",\"defaultExpression\":{\"kind\":\"current-utc-timestamp\",\"fractionalSecondsPrecision\":10}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"int32\",\"defaultExpression\":{\"kind\":\"session-user\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
+    [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"current-schema\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
+    [TestCase("\"type\":\"string\",\"defaultExpression\":{\"kind\":\"current-database\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"date\",\"default\":{\"type\":\"null\"},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     [TestCase("\"type\":\"date\",\"generated\":{\"expression\":{\"kind\":\"value\",\"value\":{\"type\":\"null\"}}},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     public void TypedDefaults_RejectInvalidShapeAndDestinationInSchemaAndValidator(string column, string code)
