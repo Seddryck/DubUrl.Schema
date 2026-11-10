@@ -44,12 +44,24 @@ public sealed class SchemaInspector
         if (borrowed.State != System.Data.ConnectionState.Open)
             throw new ArgumentException("A borrowed connection must already be open.", nameof(borrowed));
         SchemaMetadata metadata;
-        try { metadata = await reader.ReadAsync(borrowed, options, cancellationToken).ConfigureAwait(false); }
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredColumns = null;
+        try
+        {
+            if (reader is IStructuredColumnMetadataReader structuredReader)
+            {
+                var result = await structuredReader.ReadWithStructuredTypesAsync(borrowed, options, cancellationToken).ConfigureAwait(false);
+                (metadata, structuredColumns) = (result.Metadata, result.StructuredColumns);
+            }
+            else
+            {
+                metadata = await reader.ReadAsync(borrowed, options, cancellationToken).ConfigureAwait(false);
+            }
+        }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or TimeoutException or NotSupportedException)
         { return Failure("SDI002", MetadataCoverage.Inaccessible, "Database metadata could not be accessed."); }
         cancellationToken.ThrowIfCancellationRequested();
-        return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader);
+        return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns);
     }
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options = null, CancellationToken cancellationToken = default)
@@ -57,16 +69,22 @@ public sealed class SchemaInspector
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata)
+        => Map(metadata, options, cancellationToken, uniqueMetadata, null);
+
+    public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         cancellationToken.ThrowIfCancellationRequested();
-        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata); }
+        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata); }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
         { return Failure("SDI007", MetadataCoverage.Unrepresentable, "Metadata could not be mapped into a valid schema."); }
     }
 
     private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options,
-        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata)
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         options ??= new();
@@ -76,7 +94,7 @@ public sealed class SchemaInspector
         foreach (var item in coverage.Where(item => item.Value is not (MetadataCoverage.Available or MetadataCoverage.Absent)))
             diagnostics.Add(new("SDI003", item.Key, item.Value, "Requested metadata is not completely available."));
         var selected = SelectTables(metadata, options, diagnostics);
-        diagnostics.AddRange(metadata.Diagnostics.Where(item => options.Features.Contains(item.Feature) && (item.Object is null || selected.ContainsKey(item.Object))));
+        diagnostics.AddRange(metadata.Diagnostics.Where(item => coverage.ContainsKey(item.Feature) && (item.Object is null || selected.ContainsKey(item.Object))));
         var tables = new List<Table>();
         var indexes = new List<Index>();
         foreach (var table in selected.Values.OrderBy(table => Name(table.Identity).Key, StringComparer.Ordinal))
@@ -86,7 +104,13 @@ public sealed class SchemaInspector
             {
                 var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
                     .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
-                tables.Add(MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults)));
+                var mapped = MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults), structuredMetadata);
+                if (mapped is null)
+                {
+                    ApplyDiagnosticCoverage(coverage, diagnostics);
+                    return new(null, false, false, coverage, diagnostics.ToArray());
+                }
+                tables.Add(mapped);
                 indexes.AddRange(MapIndexes(table, unique, diagnostics));
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
@@ -142,13 +166,20 @@ public sealed class SchemaInspector
         }
     }
 
-    private static Table MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
+    private static Table? MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
         List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys,
-        bool inspectDefaults)
+        bool inspectDefaults, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
-        var columns = table.Columns.OrderBy(column => column.Ordinal)
-            .Select(column => MapColumn(table.Identity, column, diagnostics, inspectDefaults)).ToArray();
+        var columns = new List<Column>();
+        foreach (var column in table.Columns.OrderBy(column => column.Ordinal))
+        {
+            var structured = structuredMetadata?.GetValueOrDefault(new StructuredColumnIdentity(table.Identity, column.Name));
+            var mapped = structured is null ? MapColumn(table.Identity, column, diagnostics, inspectDefaults)
+                : MapStructuredColumn(table.Identity, column, structured, diagnostics, inspectDefaults);
+            if (mapped is null) return null;
+            columns.Add(mapped);
+        }
         var byName = columns.ToDictionary(column => column.Name, StringComparer.Ordinal);
         var constraints = new List<Constraint>();
         if (table.PrimaryKey is { } pk)
@@ -160,7 +191,7 @@ public sealed class SchemaInspector
             unique.Key.Columns.Select(name => byName[name]).ToArray(),
             unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));
 
-        return new Table(Name(table.Identity), columns, constraints.ToArray(), table.Comment);
+        return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment);
     }
 
     private static IEnumerable<Index> MapIndexes(MetadataTable table,
@@ -273,6 +304,39 @@ public sealed class SchemaInspector
         }
 
         return MapColumn(column, column.Default is ColumnDefaultExpression or MetadataExpression ? null : column.Default);
+    }
+
+    private static Column? MapStructuredColumn(MetadataName table, MetadataColumn column,
+        StructuredColumnMetadata metadata, List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults)
+    {
+        var label = $"The structured type for column '{column.Name}'";
+        if (metadata.Type is not { } type)
+        {
+            var coverage = metadata.Coverage == MetadataCoverage.Available ? MetadataCoverage.Unrepresentable : metadata.Coverage;
+            diagnostics.Add(new("SDI012", SchemaFeature.Columns, coverage, $"{label} has unknown shape or storage.", table));
+            return null;
+        }
+        if (column.Nullable is null || column.Generation is { Expression: null })
+        {
+            diagnostics.Add(new("SDI012", SchemaFeature.Columns, MetadataCoverage.Unrepresentable,
+                $"{label} has unknown column nullability or incompatible generation.", table));
+            return null;
+        }
+        if (metadata.Coverage != MetadataCoverage.Available || type.Shape.HasUnknownNullability)
+        {
+            var coverage = metadata.Coverage == MetadataCoverage.Available ? MetadataCoverage.Unrepresentable : metadata.Coverage;
+            diagnostics.Add(new("SDI012", SchemaFeature.Columns, coverage,
+                $"{label} has incomplete metadata.", table));
+        }
+        var sqlNull = column.Default is DBNull && column.Nullable is true && column.Generation is null;
+        if (inspectDefaults && column.Default is not null && !sqlNull)
+        {
+            diagnostics.Add(new("SDI011", SchemaFeature.Defaults, MetadataCoverage.Unrepresentable,
+                $"The catalog default for structured column '{column.Name}' cannot be represented.", table));
+        }
+        return new Column(column.Name, type, sqlNull ? DBNull.Value : null,
+            [column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint()],
+            column.Comment, MapGeneration(column) as GeneratedColumnGeneration);
     }
 
     private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression = null)

@@ -26,6 +26,86 @@ public class SchemaSqlRendererExtensionTests
 
     [TestCase(false)]
     [TestCase(true)]
+    public void StructuredTypes_PassStorageAndShapeToBothColumnRenderingPaths(bool providerOwnsColumn)
+    {
+        var type = new StructuredColumnType(new StructType([new("field.name", new VectorType(DbType.Single, 3), false)]),
+            StructuredStorage.JsonText);
+        var column = new Column("payload", type, DBNull.Value, [new NullableConstraint()]);
+        var table = new Table(new DatabaseObjectName("events", "audit"), [column, new("id", DbType.Int32)]);
+        var provider = new StructuredRenderer("STUB_TYPE([field.name], 3)", providerOwnsColumn);
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider));
+        var schema = new Schema([table]);
+
+        var sql = renderer.Plan(schema).Single().CommandText;
+        var context = provider.Contexts.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(context.Table, Is.EqualTo(table.Identity));
+            Assert.That(context.Column, Is.SameAs(column));
+            Assert.That(context.Type, Is.SameAs(type));
+            Assert.That(context.Nullable, Is.True);
+            Assert.That(sql, Does.Contain("[payload] STUB_TYPE([field.name], 3) NULL DEFAULT NULL"));
+            Assert.That(renderer.Render(schema), Does.Contain("[payload] STUB_TYPE([field.name], 3) NULL DEFAULT NULL"));
+        });
+    }
+
+    [TestCase("missing hook")]
+    [TestCase("unsupported storage")]
+    [TestCase("incomplete SQL")]
+    [TestCase("incomplete shape")]
+    public void StructuredTypes_RejectUnsupportedAndIncompletePlans(string failure)
+    {
+        var type = new StructuredColumnType(new ArrayType(new ScalarType(DbType.Int32),
+            failure == "incomplete shape" ? null : false), StructuredStorage.Binary);
+        var schema = new Schema([new Table("events", [new("payload", type)])]);
+        var provider = new StructuredRenderer(failure == "unsupported storage" ? null : " ");
+        var renderer = new SchemaScriptRenderer(failure == "missing hook" ? source : new ProviderDialect(source, provider),
+            SchemaCreationOptions.DropIfExists);
+
+        Assert.That(() => renderer.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains("events.payload"));
+        Assert.That(() => renderer.Render(schema), Throws.TypeOf<NotSupportedException>());
+        if (failure == "incomplete shape")
+            Assert.That(provider.Contexts, Is.Empty);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void StructuredTypes_ValidateForeignKeyEndpointsWithTableContext(bool external)
+    {
+        var type = new StructuredColumnType(new JsonType(), StructuredStorage.JsonText);
+        var targetColumn = new Column("key", type);
+        var parent = new Table(new DatabaseObjectName("parent", "audit"), [targetColumn],
+            [new PrimaryKeyConstraint([targetColumn])]);
+        var child = new Table("child", [new Column("ref", type)],
+            [new ForeignKey("fk", ["ref"], parent.Identity, ["key"])]);
+        var schema = external ? new Schema([child], [], [], [parent]) : new Schema([parent, child]);
+        var provider = new StructuredRenderer("STUB_JSON_TEXT");
+
+        var plan = new SchemaScriptRenderer(new ProviderDialect(source, provider)).Plan(schema);
+
+        Assert.That(provider.Contexts, Has.Count.EqualTo(2));
+        Assert.That(provider.Contexts, Has.All.Property(nameof(StructuredColumnTypeContext.IsKey)).True);
+        Assert.That(provider.Contexts.Single(context => context.Table == parent.Identity).Nullable, Is.False);
+        Assert.That(plan.Count(command => command.Operation == SchemaSqlOperation.CreateTable), Is.EqualTo(external ? 1 : 2));
+    }
+
+    private sealed class StructuredRenderer(string? sql, bool ownsColumn = false)
+        : StandardSchemaSqlRenderer, IStructuredColumnSqlRenderer, IColumnDefinitionSqlRenderer
+    {
+        public List<StructuredColumnTypeContext> Contexts { get; } = [];
+
+        public string? RenderStructuredType(IDialect dialect, StructuredColumnTypeContext context)
+        {
+            Contexts.Add(context);
+            return sql;
+        }
+
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext column)
+            => ownsColumn ? new(column.Type, ColumnDefinitionClauses.None) : null;
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
     public void TypedDefaults_UseStructuredContextAndRenderOnceThroughEitherColumnPath(bool providerOwnsDefault)
     {
         var tableIdentity = new DatabaseObjectName("records", "ddl_schema", "ddl_database");

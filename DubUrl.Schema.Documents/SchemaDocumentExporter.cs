@@ -131,7 +131,8 @@ public sealed class SchemaDocumentExporter
         var result = new ColumnDocument
         {
             Name = column.Name,
-            Type = TypeName(column.Type),
+            Type = column.StructuredType is null ? TypeName(column.Type) : null,
+            StructuredType = column.StructuredType is { } structured ? StructuredTypeMapping.Export(structured) : null,
             Description = column.Description,
             Nullable = !column.Constraints.OfType<NotNullableConstraint>().Any(),
             Default = ColumnDefaultLiteral(column),
@@ -294,8 +295,7 @@ public sealed class SchemaDocumentExporter
         },
         _ => throw new NotSupportedException("Unsupported literal type.")
     };
-    private static string TypeName(DbType type) => SchemaDocumentTypes.Supported.Single(name =>
-        SchemaDocumentTypes.TryGetDbType(name, out var candidate) && candidate == type);
+    private static string TypeName(DbType type) => SchemaDocumentTypes.GetName(type);
     internal static DatabaseObjectNameDocument Name(DatabaseObjectName name) =>
         new() { Name = name.Name, Schema = name.Schema, Database = name.Database, Catalog = name.Catalog };
 }

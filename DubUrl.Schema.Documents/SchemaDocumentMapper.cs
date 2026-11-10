@@ -93,6 +93,9 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
 
         return document switch
         {
+            { StructuredType: not null } => new Column(document.Name!,
+                StructuredTypeMapping.Map(document, "column"), defaultValue, constraints, document.Description,
+                generation as GeneratedColumnGeneration),
             { Length: not null } => new VarLengthColumn(
                 document.Name!, type, document.Length.Value, defaultValue, constraints,
                 document.Description, nativeType, fallback, generation, defaultExpression),

@@ -59,6 +59,7 @@ Stable inspection codes:
 | SDI009 | Catalog construct is not representable |
 | SDI010 | Domain schema cannot be exported losslessly to v1 |
 | SDI011 | Catalog default is unknown or incompatible with the destination |
+| SDI012 | Structured type metadata is incomplete or unrepresentable |
 
 Inspection runs several catalog queries and does not establish a transaction or a database-wide snapshot. Concurrent DDL may cause inconsistent results and validation failure. For consistent exports, inspect a stable database or supply a borrowed connection with an appropriate caller-managed snapshot/transaction environment. Catalog permission filtering can conceal objects entirely; completeness is relative to visible objects and requested features, not proof of unrestricted database access.
 
@@ -78,6 +79,8 @@ SQLite reports UNIQUE names through its backing indexes. A declaration such as `
 Expression and partial indexes, unsupported types, arbitrary SQL expressions and arbitrary views produce diagnostics. Discovery recognizes literal expressions and a limited set of column and function expressions. Portable views support simple single-source projections with optional `AS` aliases. Unsupported views retain their identities and column inventories in `SchemaInspectionResult.ViewInventory`.
 
 Native types are validated through NativeDatabaseType and remain dialect scoped when discovered as native overrides (for example PostgreSQL JSONB). v1 cannot encode explicit native dialect scopes: export rejects such domain schemas with SDI010 instead of widening their scope or changing the document contract. Logical mappings of ordinary scalar types are portable approximations; source vendor storage details beyond the model are not a promise of identical physical DDL. SQL Server unbounded column facets are diagnosed.
+
+Providers can implement `IStructuredColumnMetadataReader` to return structured evidence with the same catalog snapshot, keyed by qualified table and literal column name. When the shape and storage are known, the structured descriptor takes precedence over the catalog's scalar type or native hint. A known descriptor with unknown nested nullability is retained with `SDI012` and requires partial inspection to succeed. If the shape or storage is unknown, inspection fails with `SDI012` because the column cannot be represented faithfully. Coverage reports what the catalog revealed. The descriptor does not certify database enforcement.
 
 Use least-privilege metadata visibility for inspection: SQL Server catalog visibility/VIEW DEFINITION as appropriate, PostgreSQL catalog and information_schema visibility for the selected objects, DuckDB local catalog access, or SQLite read permission. Fixture creation/deployment requires extra DDL permissions only in disposable QA databases.
 

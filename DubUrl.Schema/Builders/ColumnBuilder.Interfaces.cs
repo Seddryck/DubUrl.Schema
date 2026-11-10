@@ -26,6 +26,8 @@ public interface IColumnTypeBuilder
     /// <param name="type">The database type to set.</param>
     /// <returns>A builder interface for further configuration.</returns>
     IColumnTypeSettingsBuilder WithType(DbType type);
+    IColumnConstraintBuilder WithStructuredType(StructuredColumnType type)
+        => throw new NotSupportedException("This column builder does not support structured types.");
     /// <summary>
     /// Sets the length for the column.
     /// </summary>

@@ -34,6 +34,11 @@ public class Table
         var tableConstraints = NormalizePrimaryKey(constraints ?? []);
         Constraints = new(tableConstraints.Select(constraint => constraint is UniquenessConstraint unique
             ? NormalizeUniqueKey(unique) : constraint).ToArray());
+        foreach (var column in Constraints.Get<PrimaryKeyConstraint>()?.Columns.Values ?? [])
+        {
+            if (column.StructuredType is not null)
+                column.ValidateStructuredNullability(isPrimaryKey: true);
+        }
         ValidateUniqueNames();
         ValidateUniqueTuples();
         Description = string.IsNullOrWhiteSpace(description) ? null : description;

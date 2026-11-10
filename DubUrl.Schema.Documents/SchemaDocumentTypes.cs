@@ -69,6 +69,8 @@ public static class SchemaDocumentTypes
     public static bool TryGetDbType(string? identifier, out DbType type)
         => Types.TryGetValue(identifier ?? string.Empty, out type);
 
+    internal static string GetName(DbType type) => Types.Single(pair => pair.Value == type).Key;
+
     internal static bool SupportsLength(DbType type) => LengthTypes.Contains(type);
     internal static bool SupportsPrecision(DbType type) => PrecisionTypes.Contains(type);
     internal static bool SupportsIdentity(DbType type) => IdentityTypes.Contains(type);

@@ -93,10 +93,15 @@
       "description": "A column declaration. Primary keys are declared only at table level.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "type"],
+      "required": ["name"],
+      "oneOf": [
+        { "required": ["type"] },
+        { "required": ["structuredType"] }
+      ],
       "properties": {
         "name": { "description": "The column name.", "type": "string", "minLength": 1 },
         "type": { "description": "The portable logical column type.", "$ref": "#/$defs/logicalType" },
+        "structuredType": { "description": "The recursive shape and explicit storage for a structured column.", "$ref": "#/$defs/structuredColumnType" },
         "length": { "description": "The positive maximum length for string or binary logical types.", "type": "integer", "minimum": 1 },
         "precision": { "description": "The positive numeric precision for decimal-like logical types.", "type": "integer", "minimum": 1, "maximum": 255 },
         "scale": { "description": "The numeric scale; precision must also be specified.", "type": "integer", "minimum": 0, "maximum": 255 },
@@ -117,6 +122,16 @@
       },
       "dependentRequired": { "scale": ["precision"] },
       "dependentSchemas": {
+        "structuredType": {
+          "properties": {
+            "nativeType": false, "length": false, "precision": false, "scale": false,
+            "identity": false, "defaultExpression": false,
+            "default": { "properties": { "type": { "const": "null" } } }
+          },
+          "dependentSchemas": {
+            "default": { "required": ["nullable"], "properties": { "nullable": { "const": true } } }
+          }
+        },
         "defaultExpression": {
           "allOf": [
             {
@@ -183,6 +198,93 @@
         { "not": { "required": ["defaultExpression", "identity"] } },
         { "not": { "required": ["defaultExpression", "generated"] } }
       ]
+    },
+    "structuredColumnType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["storage", "shape"],
+      "properties": {
+        "storage": { "description": "The requested storage representation.", "enum": ["native", "json", "json-text", "binary"] },
+        "shape": {
+          "description": "The root structured shape.",
+          "$ref": "#/$defs/structuredType",
+          "properties": { "kind": { "not": { "const": "scalar" } } }
+        }
+      }
+    },
+    "structuredType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "description": "The discriminator for this type shape.", "enum": ["scalar", "json", "array", "map", "struct", "vector"] },
+        "type": {
+          "description": "The logical scalar type of a leaf or of a vector component.",
+          "$ref": "#/$defs/logicalType",
+          "not": { "const": "object" }
+        },
+        "objectShape": {
+          "description": "The optional known object shape for JSON.",
+          "$ref": "#/$defs/structuredType",
+          "properties": { "kind": { "const": "struct" } }
+        },
+        "element": { "description": "The shape of an array element.", "$ref": "#/$defs/structuredType" },
+        "elementNullable": { "description": "Whether array elements may be null, if known.", "type": ["boolean", "null"] },
+        "key": { "description": "The shape of a non-null map key.", "$ref": "#/$defs/structuredType" },
+        "value": { "description": "The shape of a map value.", "$ref": "#/$defs/structuredType" },
+        "valueNullable": { "description": "Whether map values may be null, if known.", "type": ["boolean", "null"] },
+        "fields": {
+          "description": "The ordered fields of a struct, with unique names.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/structField" }
+        },
+        "dimensions": { "description": "The number of non-null numeric components of a vector.", "type": "integer", "minimum": 1, "maximum": 2147483647 }
+      },
+      "oneOf": [
+        {
+          "properties": { "kind": { "const": "scalar" } },
+          "required": ["type"],
+          "propertyNames": { "enum": ["kind", "type"] }
+        },
+        {
+          "properties": { "kind": { "const": "json" } },
+          "propertyNames": { "enum": ["kind", "objectShape"] }
+        },
+        {
+          "properties": { "kind": { "const": "array" } },
+          "required": ["element"],
+          "propertyNames": { "enum": ["kind", "element", "elementNullable"] }
+        },
+        {
+          "properties": { "kind": { "const": "map" } },
+          "required": ["key", "value"],
+          "propertyNames": { "enum": ["kind", "key", "value", "valueNullable"] }
+        },
+        {
+          "properties": { "kind": { "const": "struct" } },
+          "required": ["fields"],
+          "propertyNames": { "enum": ["kind", "fields"] }
+        },
+        {
+          "properties": {
+            "kind": { "const": "vector" },
+            "type": { "enum": ["byte", "sbyte", "int16", "uint16", "int32", "uint32", "int64", "uint64", "single", "double", "decimal"] }
+          },
+          "required": ["type", "dimensions"],
+          "propertyNames": { "enum": ["kind", "type", "dimensions"] }
+        }
+      ]
+    },
+    "structField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": { "description": "The literal, case-sensitive field identity.", "type": "string", "pattern": "\\S" },
+        "type": { "description": "The field's type shape.", "$ref": "#/$defs/structuredType" },
+        "nullable": { "description": "Whether the field may be null, if known.", "type": ["boolean", "null"] }
+      }
     },
     "defaultStringDestination": {
       "enum": ["ansi-string", "ansi-string-fixed-length", "string", "string-fixed-length"]

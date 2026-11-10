@@ -13,6 +13,41 @@ namespace DubUrl.Schema.Testing.Builders;
 public class ColumnBuilderTests
 {
     [Test]
+    public void Build_StructuredTypesPreserveShapeAndRejectConflictingDeclarations()
+    {
+        var type = new StructuredColumnType(new ArrayType(new ScalarType(DbType.String), false), StructuredStorage.Json);
+        var column = new ColumnBuilder().WithName("values").WithStructuredType(type).WithNullable().Build();
+        Assert.That(column.StructuredType, Is.SameAs(type));
+        Assert.That(column.Constraints.Get<NullableConstraint>(), Is.Not.Null);
+
+        Assert.That(() => new ColumnBuilder().WithName("values").WithType(DbType.Object).WithStructuredType(type).Build(),
+            Throws.InvalidOperationException);
+        Assert.That(() => new ColumnBuilder().WithName("values").WithStructuredType(type).WithNativeType(new("JSON")).Build(),
+            Throws.InvalidOperationException);
+        Assert.That(() => new ColumnBuilder().WithName("values").WithType(DbType.String).WithLength(50).Build().StructuredType,
+            Is.Null);
+        Assert.That(() => new Column("values", type, "[]"), Throws.ArgumentException);
+        Assert.That(() => new Column("values", type, constraints: [new NullableConstraint(), new NotNullableConstraint()]),
+            Throws.ArgumentException);
+        Assert.That(() => new Column("values", type, DBNull.Value, [new NotNullableConstraint()]), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void StructuredTypes_ValidateAndSnapshotTheirShapes()
+    {
+        var scalar = new ScalarType(DbType.String);
+        StructField[] fields = [new("Part.Name", scalar, true), new("part.name", scalar, false)];
+        var structure = new StructType(fields);
+        fields[1] = fields[0];
+        Assert.That(structure.Fields.Select(field => field.Name), Is.EqualTo(new[] { "Part.Name", "part.name" }));
+        Assert.That(() => new StructType(fields), Throws.ArgumentException);
+        Assert.That(() => new StructuredColumnType(scalar, StructuredStorage.Native), Throws.ArgumentException);
+        Assert.That(() => new StructuredColumnType(structure, (StructuredStorage)42), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => new VectorType(DbType.String, 8), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => new VectorType(DbType.Single, 0), Throws.TypeOf<ArgumentOutOfRangeException>());
+    }
+
+    [Test]
     public void Build_TypedDefaultConflictsAreRejectedInEitherOrder()
     {
         var expression = ColumnDefaultExpression.CurrentDate;

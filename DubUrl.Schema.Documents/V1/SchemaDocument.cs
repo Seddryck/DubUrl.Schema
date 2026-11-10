@@ -33,6 +33,7 @@ public sealed class ColumnDocument
 {
     public string? Name { get; set; }
     public string? Type { get; set; }
+    public StructuredColumnTypeDocument? StructuredType { get; set; }
     public int? Length { get; set; }
     public byte? Precision { get; set; }
     public byte? Scale { get; set; }
@@ -45,6 +46,33 @@ public sealed class ColumnDocument
     public IdentityColumnDocument? Identity { get; set; }
     public GeneratedColumnDocument? Generated { get; set; }
     public List<CheckDocument> Checks { get; set; } = [];
+}
+
+public sealed class StructuredColumnTypeDocument
+{
+    public string? Storage { get; set; }
+    public StructuredTypeDocument? Shape { get; set; }
+}
+
+public sealed class StructuredTypeDocument
+{
+    public string? Kind { get; set; }
+    public string? Type { get; set; }
+    public StructuredTypeDocument? ObjectShape { get; set; }
+    public StructuredTypeDocument? Element { get; set; }
+    public bool? ElementNullable { get; set; }
+    public StructuredTypeDocument? Key { get; set; }
+    public StructuredTypeDocument? Value { get; set; }
+    public bool? ValueNullable { get; set; }
+    public List<StructFieldDocument>? Fields { get; set; }
+    public int? Dimensions { get; set; }
+}
+
+public sealed class StructFieldDocument
+{
+    public string? Name { get; set; }
+    public StructuredTypeDocument? Type { get; set; }
+    public bool? Nullable { get; set; }
 }
 
 public sealed class DefaultExpressionDocument

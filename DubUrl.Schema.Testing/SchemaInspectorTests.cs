@@ -9,6 +9,55 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
+    [TestCase("complete", false)]
+    [TestCase("incomplete", false)]
+    [TestCase("incomplete", true)]
+    [TestCase("unknown", true)]
+    public async Task Inspect_StructuredTypesPreserveCatalogEvidenceWithoutScalarFallback(string state, bool allowPartial)
+    {
+        var type = state == "unknown" ? null : new StructuredColumnType(
+            new ArrayType(new ScalarType(DbType.Int32), state == "complete" ? false : null), StructuredStorage.JsonText);
+        var column = new MetadataColumn("payload", 0, DbType.String, true) { Length = 200, NativeType = "VARCHAR" };
+        var table = new MetadataTable(new("events", "audit"), [column, new("id", 1, DbType.Int32, false)]);
+        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns];
+        var options = new DiscoveryOptions { Features = [SchemaFeature.Tables], AllowPartial = allowPartial };
+        var metadata = new SchemaMetadata([table], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []);
+        var reader = new Mock<IStructuredColumnMetadataReader>(MockBehavior.Strict);
+        var evidence = new Dictionary<StructuredColumnIdentity, StructuredColumnMetadata>
+        {
+            [new(table.Identity, column.Name)] = new(type,
+                state == "unknown" ? MetadataCoverage.Unrepresentable : MetadataCoverage.Available)
+        };
+        var connection = new Mock<System.Data.Common.DbConnection>();
+        connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
+        reader.Setup(value => value.ReadWithStructuredTypesAsync(connection.Object, options, default))
+            .ReturnsAsync(new StructuredSchemaMetadata(metadata, evidence));
+
+        var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object, options);
+        connection.VerifyGet(value => value.State, Times.Once);
+        connection.VerifyNoOtherCalls();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComplete, Is.EqualTo(state == "complete"));
+            Assert.That(result.IsSuccess, Is.EqualTo(state == "complete" || (type is not null && allowPartial)));
+            Assert.That(result.Coverage[SchemaFeature.Columns],
+                Is.EqualTo(state == "complete" ? MetadataCoverage.Available : MetadataCoverage.Unrepresentable));
+            if (state != "complete")
+                Assert.That(result.Diagnostics.Single().Code, Is.EqualTo("SDI012"));
+            if (type is null)
+            {
+                Assert.That(result.Schema, Is.Null);
+                return;
+            }
+            var columns = result.Schema!.Tables.Values.Single().Columns;
+            Assert.That(columns["payload"].StructuredType, Is.SameAs(type));
+            Assert.That(columns["payload"].NativeType, Is.Null);
+            Assert.That(columns["payload"].Constraints.Get<NullableConstraint>(), Is.Not.Null);
+            Assert.That(columns["id"].Type, Is.EqualTo(DbType.Int32));
+        });
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public async Task Inspect_TypedDefaultsPreserveSymbolsAndDiagnoseUnknownWithoutExecutingSql(bool allowPartial)
