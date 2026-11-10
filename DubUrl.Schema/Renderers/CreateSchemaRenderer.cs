@@ -75,6 +75,8 @@ public class CreateSchemaRenderer : RendererEngine
     {
         if (value is not ColumnViewModel column)
             throw new ArgumentException("The column type formatter requires a column view model.", nameof(value));
+        if (column.Source.StructuredType is not null)
+            return column.PlannedStructuredType ?? throw new NotSupportedException("A structured type requires a table-aware provider plan.");
         if (column.NativeType is null)
             return dialect.DbTypeMapper.ToDictionary()[column.Type].ToString()!;
         if (nativeTypes.TryResolve(dialect, column.NativeType, out var nativeType))
@@ -98,13 +100,37 @@ public class CreateSchemaRenderer : RendererEngine
     internal static string ResolveColumnType(ColumnViewModel column, IDialect dialect, NativeTypeRegistry nativeTypes)
     {
         var type = RenderColumnType(column, dialect, nativeTypes);
-        type = dialect.SchemaSqlRenderer.RenderColumnType(dialect, type, column.DeclaredLength,
-            column.Precision, column.Scale,
-            column.NativeType is not null && nativeTypes.TryResolve(dialect, column.NativeType, out _));
+        if (column.Source.StructuredType is null)
+        {
+            type = dialect.SchemaSqlRenderer.RenderColumnType(dialect, type, column.DeclaredLength,
+                column.Precision, column.Scale,
+                column.NativeType is not null && nativeTypes.TryResolve(dialect, column.NativeType, out _));
+        }
         if (column.IsKey)
             dialect.SchemaSqlRenderer.ValidateKeyColumn(dialect, type, column.TableIdentity?.ToString() ?? "unknown", column.Name);
 
         return type;
+    }
+
+    internal static string PlanStructuredType(TableViewModel table, ColumnViewModel column,
+        StructuredColumnType type, IDialect dialect)
+    {
+        var label = $"Structured column '{table.Identity}.{column.Name}'";
+        var isPrimaryKey = column.Source.Constraints.Get<PrimaryKeyConstraint>() is not null
+            || table.PrimaryKey?.Columns.Any(key => key.Name == column.Name) is true;
+        column.Source.ValidateStructuredNullability(isPrimaryKey);
+        if (type.Shape.HasUnknownNullability)
+            throw new NotSupportedException($"{label} has incomplete nested nullability.");
+
+        bool? nullable = isPrimaryKey || column.NotNullable is not null ? false : column.Nullable is not null ? true : null;
+        if (dialect.SchemaSqlRenderer is not IStructuredColumnSqlRenderer renderer)
+            throw new NotSupportedException($"{label} requires a provider that supports structured types.");
+
+        var sql = renderer.RenderStructuredType(dialect,
+            new(table.Identity, column.Source, type, nullable, column.IsKey, table.PhysicalOptions));
+        if (string.IsNullOrWhiteSpace(sql))
+            throw new NotSupportedException($"{label} has no provider type plan for the requested {type.Storage} storage.");
+        return sql;
     }
 
     private static string RenderGeneration(ColumnViewModel column, IDialect dialect, string type)
@@ -128,6 +154,8 @@ public class CreateSchemaRenderer : RendererEngine
         {
             column.PlannedSpecification = null;
             column.RenderedClauses = ColumnDefinitionClauses.None;
+            column.PlannedStructuredType = column.Source.StructuredType is { } type
+                ? PlanStructuredType(table, column, type, dialect) : null;
         }
         if (dialect.SchemaSqlRenderer is not IColumnDefinitionSqlRenderer renderer) return;
         var primaryColumns = table.PrimaryKey?.Columns.Select(column => column.Name).ToArray()

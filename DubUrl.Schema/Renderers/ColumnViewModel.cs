@@ -12,6 +12,7 @@ public class ColumnViewModel
 {
     internal bool TableConsumesKeys { get; set; }
     internal string? PlannedSpecification { get; set; }
+    internal string? PlannedStructuredType { get; set; }
     internal string? PlannedDefaultExpression { get; set; }
     internal Column Source { get; }
     internal ColumnDefinitionClauses RenderedClauses { get; set; }

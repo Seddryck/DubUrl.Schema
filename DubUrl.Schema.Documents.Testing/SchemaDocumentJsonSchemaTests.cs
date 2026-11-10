@@ -25,6 +25,9 @@ public class SchemaDocumentJsonSchemaTests
         [typeof(DatabaseObjectNameDocument)] = "databaseObjectName",
         [typeof(TableDocument)] = "table",
         [typeof(ColumnDocument)] = "column",
+        [typeof(StructuredColumnTypeDocument)] = "structuredColumnType",
+        [typeof(StructuredTypeDocument)] = "structuredType",
+        [typeof(StructFieldDocument)] = "structField",
         [typeof(DefaultExpressionDocument)] = "defaultExpression",
         [typeof(NativeTypeDocument)] = "nativeType",
         [typeof(IdentityColumnDocument)] = "identityColumn",
@@ -117,6 +120,59 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("{\"version\":1,\"indexes\":[{\"identity\":{\"name\":\"i\"},\"table\":{\"name\":\"t\"},\"columns\":[{\"name\":\"c\",\"direction\":\"sideways\"}]}]}")]
     public void InvalidDocuments_AreRejected(string source)
         => Assert.That(Evaluate(source).IsValid, Is.False);
+
+    [TestCase(SchemaDocumentFormat.Json)]
+    [TestCase(SchemaDocumentFormat.Yaml)]
+    public void StructuredTypes_RoundTripRecursiveShapesAndExplicitStorage(SchemaDocumentFormat format)
+    {
+        var scalar = new ScalarType(DbType.Int64);
+        var structure = new StructType([
+            new("Payload.Name", new ArrayType(new MapType(new ScalarType(DbType.String), scalar, true), false), true),
+            new("payload.name", new VectorType(DbType.Single, 8), false),
+            new("unknown", new ArrayType(scalar, null), null)
+        ]);
+        StructuredColumnType[] types =
+        [
+            new(new JsonType(structure), StructuredStorage.Json),
+            new(structure, StructuredStorage.JsonText),
+            new(new ArrayType(scalar, false), StructuredStorage.Native),
+            new(new VectorType(DbType.Double, 64), StructuredStorage.Binary)
+        ];
+        var columns = types.Select((type, index) => new Column($"c{index}", type)).ToArray();
+        var schema = new Schema([new Table("samples", [.. columns, new Column("legacy", DbType.Object)])]);
+        var document = new SchemaDocumentExporter().Map(schema);
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, document, format);
+        if (format == SchemaDocumentFormat.Json)
+            Assert.That(Evaluate(Encoding.UTF8.GetString(stream.ToArray())).IsValid, Is.True);
+        stream.Position = 0;
+        var read = new SchemaDocumentReader().Read(stream, format);
+        var mapped = new SchemaDocumentMapper().Map(read).Tables.Values.Single().Columns;
+
+        Assert.That(read.Version, Is.EqualTo(1));
+        Assert.That(mapped.Values.Select(column => column.StructuredType), Is.EqualTo(types.Append(null)));
+        Assert.That(mapped["legacy"].Type, Is.EqualTo(DbType.Object));
+    }
+
+    [TestCase("""{"storage":"auto","shape":{"kind":"json"}}""", "", "structuredType.storage")]
+    [TestCase("""{"storage":"native","shape":{"kind":"opaque"}}""", "", "structuredType.shape.kind")]
+    [TestCase("""{"storage":"native","shape":{"kind":"vector","type":"single","dimensions":0}}""", "", "structuredType.shape.dimensions")]
+    [TestCase("""{"storage":"native","shape":{"kind":"array","key":{"kind":"scalar","type":"string"}}}""", "", "structuredType.shape.key")]
+    [TestCase("""{"storage":"json","shape":{"kind":"json"}}""", ""","nativeType":{"name":"JSON"}""", "nativeType")]
+    [TestCase("""{"storage":"json","shape":{"kind":"json"}}""", ""","type":"object" """, "type")]
+    public void StructuredTypes_RejectUnknownOrConflictingDeclarations(string descriptor, string other, string path)
+    {
+        var source = $$"""
+            {"version":1,"tables":[{"identity":{"name":"t"},"columns":[{"name":"c","structuredType":{{descriptor}}{{other}}}]}]}
+            """;
+        Assert.That(Evaluate(source).IsValid, Is.False);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(source));
+        var document = new SchemaDocumentReader().Read(stream, SchemaDocumentFormat.Json);
+        var diagnostic = new SchemaDocumentValidator().Validate(document)
+            .Single(item => item.Code == SchemaDocumentDiagnosticCodes.InvalidStructuredType);
+        Assert.That(diagnostic.Path, Is.EqualTo($"tables[0].columns[0].{path}"));
+        Assert.That(() => new SchemaDocumentMapper().Map(document), Throws.TypeOf<SchemaDocumentMappingException>());
+    }
 
     [TestCase(SchemaDocumentFormat.Json)]
     [TestCase(SchemaDocumentFormat.Yaml)]

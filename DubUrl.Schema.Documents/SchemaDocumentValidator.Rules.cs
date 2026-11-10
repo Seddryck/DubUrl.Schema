@@ -56,10 +56,19 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             var column = context.Column;
+            if (column.StructuredType is not null)
+            {
+                try { StructuredTypeMapping.Map(column, context.Path); }
+                catch (StructuredTypeMapping.InvalidDescriptor exception)
+                {
+                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidStructuredType, exception.Message, exception.Path));
+                }
+                return;
+            }
             if (string.IsNullOrWhiteSpace(column.Type))
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
-                    "A logical column type is required.", $"{context.Path}.type"));
+                    "A logical column type or structured type is required.", $"{context.Path}.type"));
             }
             else if (!SchemaDocumentTypes.TryGetDbType(column.Type, out _))
             {

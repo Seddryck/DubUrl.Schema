@@ -230,11 +230,14 @@ public class SchemaScriptRenderer
                 var source = tables.Single(item => item.Identity == table.Identity);
                 foreach (var name in key.SourceColumns)
                     source.Columns.Single(column => column.Name == name).IsKey = true;
-                var target = schema.Tables.TryGetValue(key.TargetTable.Key, out var created)
-                    ? created : schema.ExternalTables[key.TargetTable.Key];
+                var isCreated = schema.Tables.TryGetValue(key.TargetTable.Key, out var created);
+                var target = isCreated ? created! : schema.ExternalTables[key.TargetTable.Key];
                 foreach (var name in key.TargetColumns)
                 {
-                    ValidateKeyColumn(target, name);
+                    if (isCreated && target.Columns[name].StructuredType is not null)
+                        tables.Single(item => item.Identity == target.Identity).Columns.Single(column => column.Name == name).IsKey = true;
+                    else
+                        ValidateKeyColumn(target, name);
                 }
             }
         }
@@ -242,12 +245,10 @@ public class SchemaScriptRenderer
 
     private void ValidateKeyColumn(Table target, string name)
     {
-        var column = new ColumnViewModel(target.Columns[name]);
-        var type = CreateSchemaRenderer.RenderColumnType(column, Dialect, NativeTypes);
-        type = Dialect.SchemaSqlRenderer.RenderColumnType(Dialect, type, column.DeclaredLength,
-            column.Precision, column.Scale,
-            column.NativeType is not null && NativeTypes.TryResolve(Dialect, column.NativeType, out _));
-        Dialect.SchemaSqlRenderer.ValidateKeyColumn(Dialect, type, target.Identity.ToString(), name);
+        var column = new ColumnViewModel(target.Columns[name], includePrimaryKey: true, target.Identity) { IsKey = true };
+        if (column.Source.StructuredType is { } type)
+            column.PlannedStructuredType = CreateSchemaRenderer.PlanStructuredType(new TableViewModel(target), column, type, Dialect);
+        CreateSchemaRenderer.ResolveColumnType(column, Dialect, NativeTypes);
     }
 
     private static void MarkUniqueIndexColumns(Schema schema, TableViewModel[] tables)

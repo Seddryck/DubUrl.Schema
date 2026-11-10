@@ -36,4 +36,5 @@ public static class SchemaDocumentDiagnosticCodes
     public const string DuplicateView = "SDV020";
     public const string InvalidView = "SDV021";
     public const string ViewDependencyCycle = "SDV022";
+    public const string InvalidStructuredType = "SDV023";
 }

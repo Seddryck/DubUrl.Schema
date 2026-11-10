@@ -19,7 +19,7 @@ Declarations are ordered. That order is retained for tables, columns, constraint
 |---|---|
 | Object identity | `catalog`, `database`, and `schema` are optional qualifiers; `name` is required. |
 | Tables | Contain ordered columns, one optional table-level primary key, table checks, and named foreign keys. |
-| Columns | Support logical type, length or precision/scale, nullability, uniqueness, typed default, description, native-type fallback, identity or generated value, and column checks. |
+| Columns | Support scalar or structured types, nullability, uniqueness, defaults, descriptions, generation, and column checks. Scalar types can also specify length, precision/scale, and native-type fallback. |
 | Primary keys | Are table-level, named or unnamed, single-column or composite, with ordered unique column references. |
 | Unique tuples | Use optional table-level `uniqueConstraints` with ordered `columns`, an optional `name`, and an optional `nullPolicy`. |
 | Checks | Support comparison, membership, and regular-expression forms with structured expressions and explicit null behavior. |
@@ -42,6 +42,42 @@ string-fixed-length, time, uint16, uint32, uint64, varnumeric, xml
 ```
 
 Typed literal values use invariant string representations. Binary values are Base64; dates and date-times use round-trip parsing; `null` omits `value`. A column default's literal type must match the column logical type.
+
+### Structured columns
+
+A v1 column can declare `structuredType` with a recursive `shape` and an explicit `storage`. Existing `type` and `nativeType` declarations retain their v1 behavior. A structured column cannot also specify a scalar type, native override, scalar facets, identity generation, or an expression default. Its only supported literal default is SQL NULL on a nullable column.
+
+```yaml
+name: readings
+nullable: false
+structuredType:
+  storage: native
+  shape:
+    kind: array
+    elementNullable: false
+    element:
+      kind: struct
+      fields:
+        - name: sensor.id
+          nullable: false
+          type: { kind: scalar, type: string }
+        - name: sample
+          nullable: true
+          type: { kind: vector, type: single, dimensions: 3 }
+```
+
+| Shape | Members |
+|---|---|
+| `scalar` | Nested leaf with a logical `type` other than `object`. |
+| `json` | Arbitrary JSON, or a JSON object described by an optional struct in `objectShape`. |
+| `array` | `element` shape and `elementNullable`. |
+| `map` | `key` and `value` shapes and `valueNullable`. Map keys are non-null. |
+| `struct` | Ordered `fields`, each with its literal, case-sensitive `name`, recursive `type`, and `nullable`. Names must be unique within the struct. |
+| `vector` | Numeric component `type` and a positive `dimensions` count. Components are non-null. |
+
+Column `nullable` describes the whole value. Omitted nested nullability records unknown metadata and can be exported. SQL planning requires known nested nullability. The descriptor records the shape without certifying database enforcement.
+
+`storage` accepts `native` for an engine's structured type, `json` for a database JSON type, `json-text` for JSON stored as text, and `binary` for binary storage. The caller selects storage and any value codec. In fluent schemas, use `WithStructuredType` with a `StructuredColumnType`. SQL export and deployment require a provider that implements `IStructuredColumnSqlRenderer` and supports the requested combination. The provider supplies the SQL type to the existing column-definition pipeline. Dialect implementations and live QA are tracked in [DubUrl.Providers #13](https://github.com/Seddryck/DubUrl.Providers/issues/13).
 
 ### Expression defaults
 

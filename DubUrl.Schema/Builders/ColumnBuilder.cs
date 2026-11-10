@@ -13,6 +13,8 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
 {
     public string Name { get; private set; } = string.Empty;
     private DbType Type { get; set; } = DbType.Object;
+    private bool HasScalarType { get; set; }
+    private StructuredColumnType? StructuredType { get; set; }
     private int? Length { get; set; }
     private int? Scale { get; set; }
     private object? DefaultValue { get; set; }
@@ -34,6 +36,13 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     IColumnTypeSettingsBuilder IColumnTypeBuilder.WithType(DbType type)
     {
         Type = type;
+        HasScalarType = true;
+        return this;
+    }
+
+    IColumnConstraintBuilder IColumnTypeBuilder.WithStructuredType(StructuredColumnType type)
+    {
+        StructuredType = type ?? throw new ArgumentNullException(nameof(type));
         return this;
     }
 
@@ -132,6 +141,15 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
             throw new InvalidOperationException("Column name must be set before building");
 
         var constraints = Constraints.Build();
+
+        if (StructuredType is not null)
+        {
+            if (HasScalarType || Length.HasValue || Scale.HasValue || NativeType is not null)
+                throw new InvalidOperationException("A structured type cannot be combined with a scalar type, scalar facets, or a native type override.");
+            if (Generation is IdentityColumnGeneration || DefaultExpression is not null)
+                throw new InvalidOperationException("A structured type cannot use identity generation or a typed default expression.");
+            return new Column(Name, StructuredType, DefaultValue, constraints, Description, Generation as GeneratedColumnGeneration);
+        }
 
         if (Scale.HasValue && Length.HasValue)
             return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
