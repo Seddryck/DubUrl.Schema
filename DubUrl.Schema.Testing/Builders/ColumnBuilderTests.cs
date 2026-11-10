@@ -32,12 +32,17 @@ public class ColumnBuilderTests
         Assert.That(() => ColumnDefaultExpression.CurrentTime(10), Throws.TypeOf<ArgumentOutOfRangeException>());
         Assert.That(() => ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary), Throws.ArgumentException);
         Assert.That(() => ColumnDefaultExpression.NewUuid(UuidRepresentation.Native, UuidByteOrder.Network), Throws.ArgumentException);
+        Assert.That(() => ColumnDefaultExpression.NextSequenceValue(new("unqualified")), Throws.ArgumentException);
+        Assert.That(() => ColumnDefaultExpression.NextSequenceValue(new("name", " ")), Throws.ArgumentException);
         Assert.That(() => new Column("value", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTime()), Throws.ArgumentException);
         Assert.That(() => new Column("value", DbType.String, defaultExpression: ColumnDefaultExpression.CurrentUser), Throws.ArgumentException);
         Assert.That(() => new VarLengthColumn("value", DbType.String, 35,
             defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText)), Throws.ArgumentException);
         Assert.That(() => new VarLengthColumn("value", DbType.Binary, 17,
             defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.Network)), Throws.ArgumentException);
+        var sequence = ColumnDefaultExpression.NextSequenceValue(new("sequence", "schema"));
+        Assert.That(() => new Column("value", DbType.Double, defaultExpression: sequence), Throws.ArgumentException);
+        Assert.That(() => new NumericColumn("value", DbType.Decimal, 2, 2, defaultExpression: sequence), Throws.ArgumentException);
     }
 
     [Test]

@@ -120,7 +120,7 @@ public class SchemaDocumentJsonSchemaTests
 
     [TestCase(SchemaDocumentFormat.Json)]
     [TestCase(SchemaDocumentFormat.Yaml)]
-    public void TypedDefaults_RoundTripEveryKind(SchemaDocumentFormat format)
+    public void TypedDefaults_RoundTripEveryKindAndPreserveExternalSequence(SchemaDocumentFormat format)
     {
         Column[] columns =
         [
@@ -136,7 +136,9 @@ public class SchemaDocumentJsonSchemaTests
             new VarLengthColumn("binary_uuid", DbType.Binary, 16,
                 defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.DotNetMixedEndian)),
             new VarLengthColumn("text_uuid", DbType.StringFixedLength, 36,
-                defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText))
+                defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText)),
+            new NumericColumn("sequence_value", DbType.Decimal, 19, 2, defaultExpression:
+                ColumnDefaultExpression.NextSequenceValue(new("sequence.name'\"", "shared schema", "another db", "catalog")))
         ];
         var schema = new Schema([new Table("samples", columns)]);
         var exporter = new SchemaDocumentExporter();
@@ -163,7 +165,10 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("\"type\":\"string\",\"defaultExpression\":{\"kind\":\"current-database\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"string\",\"length\":35,\"defaultExpression\":{\"kind\":\"new-uuid\",\"representation\":\"canonical-text\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"binary\",\"length\":16,\"defaultExpression\":{\"kind\":\"new-uuid\",\"representation\":\"binary\"}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"int64\",\"defaultExpression\":{\"kind\":\"next-sequence-value\",\"sequence\":{\"schema\":\" \",\"name\":\"s\"}}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"int64\",\"defaultExpression\":{\"kind\":\"next-sequence-value\",\"sequence\":{\"name\":\"s\"}}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"date\",\"default\":{\"type\":\"null\"},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
+    [TestCase("\"type\":\"int64\",\"identity\":{},\"defaultExpression\":{\"kind\":\"next-sequence-value\",\"sequence\":{\"name\":\"s\",\"schema\":\"shared\"}}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     [TestCase("\"type\":\"date\",\"generated\":{\"expression\":{\"kind\":\"value\",\"value\":{\"type\":\"null\"}}},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     public void TypedDefaults_RejectInvalidShapeAndDestinationInSchemaAndValidator(string column, string code)
     {

@@ -105,6 +105,33 @@ public class SchemaSqlRendererExtensionTests
         Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => renderer.Render(schema))!.Code, Is.EqualTo(code));
     }
 
+    [Test]
+    public void ExternalSequence_UsesQualifiedComponentsAndEmitsOnlyTableCommands()
+    {
+        var sequence = new DatabaseObjectName("next.'\"&", "shared space", "data.store", "catalog]name");
+        var expression = ColumnDefaultExpression.NextSequenceValue(sequence);
+        var column = new NumericColumn("id", DbType.Decimal, 20, 2, defaultExpression: expression);
+        var schema = new Schema([new Table("one", [column]), new Table("two", [column])]);
+        var provider = new DefaultPlanningRenderer((dialect, context) =>
+        {
+            var name = context.Column.DefaultExpression!.Sequence!;
+            Assert.That(name, Is.EqualTo(sequence));
+            return new("STUB_NEXT " + dialect.SchemaSqlRenderer.RenderObjectName(dialect,
+                name.Catalog, name.Database, name.Schema, name.Name));
+        });
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider), SchemaCreationOptions.DropIfExists);
+        var plan = renderer.Plan(schema);
+        var reference = "DEFAULT STUB_NEXT [catalog]]name].[data.store].[shared space].[next.'\"&]";
+        Assert.That(plan.Select(command => command.Operation), Is.EqualTo(new[]
+            { SchemaSqlOperation.DropTable, SchemaSqlOperation.DropTable, SchemaSqlOperation.CreateTable, SchemaSqlOperation.CreateTable }));
+        Assert.That(plan.Skip(2).Select(command => command.CommandText), Has.All.Contains(reference));
+        Assert.That(renderer.Render(schema), Does.Contain(reference).And.Not.Contain("CREATE SEQUENCE").And.Not.Contain("DROP SEQUENCE"));
+
+        var unresolved = new SchemaScriptRenderer(new ProviderDialect(source, new DefaultPlanningRenderer((_, _) => null)));
+        Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => unresolved.Plan(schema))!.Code,
+            Is.EqualTo(ColumnDefaultPlanningException.Unsupported));
+    }
+
     private static Column ContextColumn(string name, ColumnDefaultExpression expression, bool nullable = true)
         => new VarLengthColumn(name, DbType.String, 64,
             constraints: nullable ? [new NullableConstraint()] : [new NotNullableConstraint()], defaultExpression: expression);

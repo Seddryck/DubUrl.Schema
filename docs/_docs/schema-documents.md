@@ -56,14 +56,25 @@ Typed literal values use invariant string representations. Binary values are Bas
 | `current-user`, `session-user` | A string with a declared length that can hold the provider's effective or session authorization identity, respectively. The database may allow the session identity to change. |
 | `current-schema`, `current-database` | A string with a declared length that can hold the inserting session's context. Providers may confirm an alias between the two. A route that can return NULL requires `nullable: true`. |
 | `new-uuid` | Set `representation` to `native` for `guid`, `binary` for exactly 16 bytes, or `canonical-text` for a hyphenated 36-character value. Text needs at least 36 characters, or exactly 36 for a fixed-length destination. Binary requires `byteOrder` set to `network` or `dotnet-mixed-endian`. |
+| `next-sequence-value` | An integer or exact numeric type with room for an integral part. Supply `sequence` with a `name` and at least one of `schema`, `database`, and `catalog`. Each component is a literal identifier. |
 
 Timestamps and time of day accept optional `fractionalSecondsPrecision` from 0 to 9. The provider must honor the requested precision. Omission uses the engine's default precision. Clock evaluation can follow the engine's statement or transaction clock. UUID version, ordering, and randomness depend on provider guarantees.
 
 Context defaults use a nonnullable destination unless it is explicitly declared nullable.
 
-For fluent schemas, pass the corresponding `ColumnDefaultExpression` factory or property to `WithDefaultExpression`.
+```yaml
+name: invoice_number
+type: int64
+defaultExpression:
+  kind: next-sequence-value
+  sequence:
+    schema: billing
+    name: invoice_numbers
+```
 
-Planning and SQL export require the provider's `IColumnDefaultSqlRenderer` capability. `SDD001` indicates an unsupported expression. `SDD002` indicates an incomplete provider plan. Native SQL and live qualification are tracked in [DubUrl.Providers #11](https://github.com/Seddryck/DubUrl.Providers/issues/11).
+For fluent schemas, pass the corresponding `ColumnDefaultExpression` factory or property to `WithDefaultExpression`. An external sequence must already exist when the database requires it. Schema creation and replacement only manage the declared tables, leaving the referenced sequence under its existing ownership.
+
+Planning and SQL export require the provider's `IColumnDefaultSqlRenderer` capability. `SDD001` indicates an unsupported expression or unresolved reference. `SDD002` indicates an incomplete provider plan. Native SQL and live qualification are tracked in [DubUrl.Providers #11](https://github.com/Seddryck/DubUrl.Providers/issues/11).
 
 `nativeType` is an intentional portability escape hatch. Its `fallback` is either `error` or `logical-type`, which tells the renderer whether an unregistered provider-native type must fail or may fall back to the portable `type`.
 

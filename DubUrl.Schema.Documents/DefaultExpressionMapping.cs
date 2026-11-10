@@ -18,6 +18,7 @@ internal static class DefaultExpressionMapping
             "current-schema" => ColumnDefaultExpression.CurrentSchema,
             "current-database" => ColumnDefaultExpression.CurrentDatabase,
             "new-uuid" => ColumnDefaultExpression.NewUuid(ParseRepresentation(document.Representation), ParseByteOrder(document.ByteOrder)),
+            "next-sequence-value" => MapSequence(document.Sequence),
             _ => throw new ArgumentException("The default expression kind is unknown.")
         };
     }
@@ -26,7 +27,8 @@ internal static class DefaultExpressionMapping
     {
         var unexpectedPrecision = document.FractionalSecondsPrecision.HasValue && !SupportsFractionalSecondsPrecision(document.Kind);
         var unexpectedUuidArguments = document.Kind != "new-uuid" && (document.Representation ?? document.ByteOrder) is not null;
-        if (unexpectedPrecision || unexpectedUuidArguments)
+        var unexpectedSequence = document is { Kind: not "next-sequence-value", Sequence: not null };
+        if (unexpectedPrecision || unexpectedUuidArguments || unexpectedSequence)
         {
             throw new ArgumentException("The default expression has arguments that do not apply to its kind.");
         }
@@ -34,6 +36,11 @@ internal static class DefaultExpressionMapping
 
     private static bool SupportsFractionalSecondsPrecision(string? kind)
         => kind is "current-timestamp" or "current-utc-timestamp" or "current-time";
+
+    private static ColumnDefaultExpression MapSequence(DatabaseObjectNameDocument? sequence)
+        => sequence is null
+            ? throw new ArgumentException("A qualified external sequence is required.")
+            : ColumnDefaultExpression.NextSequenceValue(SchemaDocumentMapper.MapIdentity(sequence));
 
     private static UuidRepresentation ParseRepresentation(string? value) => value switch
     {
@@ -64,6 +71,7 @@ internal static class DefaultExpressionMapping
             ColumnDefaultKind.CurrentSchema => "current-schema",
             ColumnDefaultKind.CurrentDatabase => "current-database",
             ColumnDefaultKind.NewUuid => "new-uuid",
+            ColumnDefaultKind.NextSequenceValue => "next-sequence-value",
             _ => throw new NotSupportedException("The default expression kind cannot be exported.")
         },
         FractionalSecondsPrecision = expression.FractionalSecondsPrecision,
@@ -79,6 +87,7 @@ internal static class DefaultExpressionMapping
             UuidByteOrder.Network => "network",
             UuidByteOrder.DotNetMixedEndian => "dotnet-mixed-endian",
             _ => null
-        }
+        },
+        Sequence = expression.Sequence is null ? null : SchemaDocumentExporter.Name(expression.Sequence)
     };
 }

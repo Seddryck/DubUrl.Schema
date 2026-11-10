@@ -12,7 +12,8 @@ public enum ColumnDefaultKind
     SessionUser,
     CurrentSchema,
     CurrentDatabase,
-    NewUuid
+    NewUuid,
+    NextSequenceValue
 }
 
 public enum UuidRepresentation
@@ -35,9 +36,10 @@ public sealed record ColumnDefaultExpression
     public int? FractionalSecondsPrecision { get; }
     public UuidRepresentation? Representation { get; }
     public UuidByteOrder? ByteOrder { get; }
+    public DatabaseObjectName? Sequence { get; }
 
     private ColumnDefaultExpression(ColumnDefaultKind kind, int? fractionalSecondsPrecision = null,
-        UuidRepresentation? representation = null, UuidByteOrder? byteOrder = null)
+        UuidRepresentation? representation = null, UuidByteOrder? byteOrder = null, DatabaseObjectName? sequence = null)
     {
         if (fractionalSecondsPrecision is < 0 or > 9)
             throw new ArgumentOutOfRangeException(nameof(fractionalSecondsPrecision), "Fractional seconds precision must be between 0 and 9.");
@@ -45,6 +47,7 @@ public sealed record ColumnDefaultExpression
         FractionalSecondsPrecision = fractionalSecondsPrecision;
         Representation = representation;
         ByteOrder = byteOrder;
+        Sequence = sequence;
     }
 
     /// <summary>Session-local timestamp, with the session offset when the destination carries an offset.</summary>
@@ -83,6 +86,17 @@ public sealed record ColumnDefaultExpression
         return new(ColumnDefaultKind.NewUuid, representation: representation, byteOrder: byteOrder);
     }
 
+    /// <summary>References a qualified, externally owned sequence.</summary>
+    public static ColumnDefaultExpression NextSequenceValue(DatabaseObjectName sequence)
+    {
+        ArgumentNullException.ThrowIfNull(sequence);
+        if (sequence is { Schema: null, Database: null, Catalog: null })
+            throw new ArgumentException("An external sequence must have at least one qualifier.", nameof(sequence));
+        if (new[] { sequence.Name, sequence.Schema, sequence.Database, sequence.Catalog }.Any(part => part?.Contains('\0') is true))
+            throw new ArgumentException("Sequence identity components cannot contain a null character.", nameof(sequence));
+        return new(ColumnDefaultKind.NextSequenceValue, sequence: sequence);
+    }
+
     internal bool IsContext => Kind is ColumnDefaultKind.CurrentUser or ColumnDefaultKind.SessionUser
         or ColumnDefaultKind.CurrentSchema or ColumnDefaultKind.CurrentDatabase;
 
@@ -102,6 +116,7 @@ public sealed record ColumnDefaultExpression
                     && (type is DbType.StringFixedLength or DbType.AnsiStringFixedLength ? length == 36 : length >= 36),
                 _ => false
             },
+            ColumnDefaultKind.NextSequenceValue => IsSequenceDestination(type, precision, scale),
             _ => IsContext && IsString(type) && length > 0
         };
         if (!compatible)
@@ -110,4 +125,10 @@ public sealed record ColumnDefaultExpression
 
     private static bool IsString(DbType type)
         => type is DbType.String or DbType.AnsiString or DbType.StringFixedLength or DbType.AnsiStringFixedLength;
+
+    private static bool IsSequenceDestination(DbType type, int? precision, int? scale)
+        => type is DbType.Byte or DbType.SByte or DbType.Int16 or DbType.UInt16 or DbType.Int32
+            or DbType.UInt32 or DbType.Int64 or DbType.UInt64
+            || ((type is DbType.Decimal or DbType.VarNumeric or DbType.Currency)
+                && (precision is null ? scale is null : scale is null or >= 0 && precision > (scale ?? 0)));
 }

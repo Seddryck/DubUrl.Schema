@@ -151,6 +151,12 @@
                 "if": { "properties": { "type": { "enum": ["ansi-string-fixed-length", "string-fixed-length"] } } },
                 "then": { "properties": { "length": { "const": 36 } } }
               }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "properties": { "kind": { "const": "next-sequence-value" } } } } },
+              "then": {
+                "properties": { "type": { "enum": ["byte", "sbyte", "int16", "int32", "int64", "uint16", "uint32", "uint64", "decimal", "varnumeric", "currency"] } }
+              }
             }
           ]
         }
@@ -189,7 +195,7 @@
       "properties": {
         "kind": {
           "description": "The symbolic database operation.",
-          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user", "current-schema", "current-database", "new-uuid"]
+          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user", "current-schema", "current-database", "new-uuid", "next-sequence-value"]
         },
         "fractionalSecondsPrecision": {
           "description": "Optional fractional digits for timestamps and time of day. Omit to use the engine's default precision.",
@@ -198,7 +204,18 @@
           "maximum": 9
         },
         "representation": { "description": "The UUID destination representation.", "enum": ["native", "binary", "canonical-text"] },
-        "byteOrder": { "description": "The required byte order for binary UUIDs.", "enum": ["network", "dotnet-mixed-endian"] }
+        "byteOrder": { "description": "The required byte order for binary UUIDs.", "enum": ["network", "dotnet-mixed-endian"] },
+        "sequence": {
+          "description": "The structured identity of an external sequence, with at least one qualifier.",
+          "$ref": "#/$defs/databaseObjectName",
+          "anyOf": [{ "required": ["catalog"] }, { "required": ["database"] }, { "required": ["schema"] }],
+          "properties": {
+            "catalog": { "pattern": "^[^\\u0000]*[^\\s\\u0000][^\\u0000]*$" },
+            "database": { "pattern": "^[^\\u0000]*[^\\s\\u0000][^\\u0000]*$" },
+            "schema": { "pattern": "^[^\\u0000]*[^\\s\\u0000][^\\u0000]*$" },
+            "name": { "pattern": "^[^\\u0000]*[^\\s\\u0000][^\\u0000]*$" }
+          }
+        }
       },
       "allOf": [
         {
@@ -214,6 +231,11 @@
           "if": { "required": ["representation"], "properties": { "representation": { "const": "binary" } } },
           "then": { "required": ["byteOrder"] },
           "else": { "not": { "required": ["byteOrder"] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "next-sequence-value" } } },
+          "then": { "required": ["sequence"] },
+          "else": { "not": { "required": ["sequence"] } }
         }
       ]
     },
