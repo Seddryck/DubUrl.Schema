@@ -30,8 +30,14 @@ public class ColumnBuilderTests
     public void TypedDefaults_RejectInvalidArgumentsAndDestinations()
     {
         Assert.That(() => ColumnDefaultExpression.CurrentTime(10), Throws.TypeOf<ArgumentOutOfRangeException>());
+        Assert.That(() => ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary), Throws.ArgumentException);
+        Assert.That(() => ColumnDefaultExpression.NewUuid(UuidRepresentation.Native, UuidByteOrder.Network), Throws.ArgumentException);
         Assert.That(() => new Column("value", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTime()), Throws.ArgumentException);
         Assert.That(() => new Column("value", DbType.String, defaultExpression: ColumnDefaultExpression.CurrentUser), Throws.ArgumentException);
+        Assert.That(() => new VarLengthColumn("value", DbType.String, 35,
+            defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText)), Throws.ArgumentException);
+        Assert.That(() => new VarLengthColumn("value", DbType.Binary, 17,
+            defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.Network)), Throws.ArgumentException);
     }
 
     [Test]

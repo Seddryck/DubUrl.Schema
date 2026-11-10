@@ -109,6 +109,28 @@ public class SchemaSqlRendererExtensionTests
         => new VarLengthColumn(name, DbType.String, 64,
             constraints: nullable ? [new NullableConstraint()] : [new NotNullableConstraint()], defaultExpression: expression);
 
+    [TestCase(UuidRepresentation.Native, DbType.Guid, null, null)]
+    [TestCase(UuidRepresentation.Binary, DbType.Binary, 16, UuidByteOrder.Network)]
+    [TestCase(UuidRepresentation.Binary, DbType.Binary, 16, UuidByteOrder.DotNetMixedEndian)]
+    [TestCase(UuidRepresentation.CanonicalText, DbType.String, 36, null)]
+    public void UuidDefaults_PreserveRepresentationAndLeaveEvaluationToInsert(UuidRepresentation representation,
+        DbType type, int? length, UuidByteOrder? order)
+    {
+        var expression = ColumnDefaultExpression.NewUuid(representation, order);
+        var column = length is { } size ? new VarLengthColumn("id", type, size,
+            nativeType: type == DbType.Binary ? new("BINARY") : null, defaultExpression: expression)
+            : new Column("id", type, defaultExpression: expression);
+        var provider = new DefaultPlanningRenderer((_, context) =>
+        {
+            Assert.That(context.Column.DefaultExpression, Is.EqualTo(expression));
+            return new("STUB_UUID()", UuidSemantics: new(Version: 4));
+        });
+        var sql = new SchemaScriptRenderer(new ProviderDialect(source, provider),
+            nativeTypes: new NativeTypeRegistry().Register<ProviderDialect>("BINARY"))
+            .Plan(new([new Table("ids", [column])])).Single().CommandText;
+        Assert.That(sql, Does.Contain("DEFAULT STUB_UUID()"));
+    }
+
     private sealed class DefaultPlanningRenderer(Func<IDialect, ColumnDefaultContext, ColumnDefaultPlan?> plan,
         bool ownsDefault = false) : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer
     {

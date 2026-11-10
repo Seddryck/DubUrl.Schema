@@ -51,6 +51,8 @@ public sealed class DefaultExpressionDocument
 {
     public string? Kind { get; set; }
     public int? FractionalSecondsPrecision { get; set; }
+    public string? Representation { get; set; }
+    public string? ByteOrder { get; set; }
 }
 
 public sealed class NativeTypeDocument

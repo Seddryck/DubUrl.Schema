@@ -131,7 +131,12 @@ public class SchemaDocumentJsonSchemaTests
             new VarLengthColumn("current_user", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentUser),
             new VarLengthColumn("session_user", DbType.AnsiString, 128, defaultExpression: ColumnDefaultExpression.SessionUser),
             new VarLengthColumn("current_schema", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentSchema),
-            new VarLengthColumn("current_database", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentDatabase)
+            new VarLengthColumn("current_database", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentDatabase),
+            new("native_uuid", DbType.Guid, defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.Native)),
+            new VarLengthColumn("binary_uuid", DbType.Binary, 16,
+                defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.Binary, UuidByteOrder.DotNetMixedEndian)),
+            new VarLengthColumn("text_uuid", DbType.StringFixedLength, 36,
+                defaultExpression: ColumnDefaultExpression.NewUuid(UuidRepresentation.CanonicalText))
         ];
         var schema = new Schema([new Table("samples", columns)]);
         var exporter = new SchemaDocumentExporter();
@@ -156,6 +161,8 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("\"type\":\"int32\",\"defaultExpression\":{\"kind\":\"session-user\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"current-schema\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"string\",\"defaultExpression\":{\"kind\":\"current-database\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
+    [TestCase("\"type\":\"string\",\"length\":35,\"defaultExpression\":{\"kind\":\"new-uuid\",\"representation\":\"canonical-text\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
+    [TestCase("\"type\":\"binary\",\"length\":16,\"defaultExpression\":{\"kind\":\"new-uuid\",\"representation\":\"binary\"}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"date\",\"default\":{\"type\":\"null\"},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     [TestCase("\"type\":\"date\",\"generated\":{\"expression\":{\"kind\":\"value\",\"value\":{\"type\":\"null\"}}},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     public void TypedDefaults_RejectInvalidShapeAndDestinationInSchemaAndValidator(string column, string code)

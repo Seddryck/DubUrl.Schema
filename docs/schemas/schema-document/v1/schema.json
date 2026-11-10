@@ -134,6 +134,23 @@
             {
               "if": { "properties": { "defaultExpression": { "properties": { "kind": { "enum": ["current-user", "session-user", "current-schema", "current-database"] } } } } },
               "then": { "required": ["length"], "properties": { "type": { "$ref": "#/$defs/defaultStringDestination" } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "required": ["representation"], "properties": { "representation": { "const": "native" } } } } },
+              "then": { "properties": { "type": { "const": "guid" } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "required": ["representation"], "properties": { "representation": { "const": "binary" } } } } },
+              "then": { "required": ["length"], "properties": { "type": { "const": "binary" }, "length": { "const": 16 } } }
+            },
+            {
+              "if": { "properties": { "defaultExpression": { "required": ["representation"], "properties": { "representation": { "const": "canonical-text" } } } } },
+              "then": {
+                "required": ["length"],
+                "properties": { "type": { "$ref": "#/$defs/defaultStringDestination" }, "length": { "minimum": 36 } },
+                "if": { "properties": { "type": { "enum": ["ansi-string-fixed-length", "string-fixed-length"] } } },
+                "then": { "properties": { "length": { "const": 36 } } }
+              }
             }
           ]
         }
@@ -172,19 +189,31 @@
       "properties": {
         "kind": {
           "description": "The symbolic database operation.",
-          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user", "current-schema", "current-database"]
+          "enum": ["current-timestamp", "current-date", "current-time", "current-utc-timestamp", "current-user", "session-user", "current-schema", "current-database", "new-uuid"]
         },
         "fractionalSecondsPrecision": {
           "description": "Optional fractional digits for timestamps and time of day. Omit to use the engine's default precision.",
           "type": "integer",
           "minimum": 0,
           "maximum": 9
-        }
+        },
+        "representation": { "description": "The UUID destination representation.", "enum": ["native", "binary", "canonical-text"] },
+        "byteOrder": { "description": "The required byte order for binary UUIDs.", "enum": ["network", "dotnet-mixed-endian"] }
       },
       "allOf": [
         {
           "if": { "properties": { "kind": { "enum": ["current-timestamp", "current-utc-timestamp", "current-time"] } } },
           "else": { "not": { "required": ["fractionalSecondsPrecision"] } }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "new-uuid" } } },
+          "then": { "required": ["representation"] },
+          "else": { "not": { "required": ["representation"] } }
+        },
+        {
+          "if": { "required": ["representation"], "properties": { "representation": { "const": "binary" } } },
+          "then": { "required": ["byteOrder"] },
+          "else": { "not": { "required": ["byteOrder"] } }
         }
       ]
     },
