@@ -127,7 +127,9 @@ public class SchemaDocumentJsonSchemaTests
             new("timestamp", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTimestamp()),
             new("date", DbType.Date, defaultExpression: ColumnDefaultExpression.CurrentDate),
             new("time", DbType.Time, defaultExpression: ColumnDefaultExpression.CurrentTime(0)),
-            new("utc_timestamp", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6))
+            new("utc_timestamp", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6)),
+            new VarLengthColumn("current_user", DbType.String, 128, defaultExpression: ColumnDefaultExpression.CurrentUser),
+            new VarLengthColumn("session_user", DbType.AnsiString, 128, defaultExpression: ColumnDefaultExpression.SessionUser)
         ];
         var schema = new Schema([new Table("samples", columns)]);
         var exporter = new SchemaDocumentExporter();
@@ -148,6 +150,7 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"arbitrary-sql\"}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"current-date\",\"fractionalSecondsPrecision\":0}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
     [TestCase("\"type\":\"datetime-offset\",\"defaultExpression\":{\"kind\":\"current-utc-timestamp\",\"fractionalSecondsPrecision\":10}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"int32\",\"defaultExpression\":{\"kind\":\"session-user\"}", SchemaDocumentDiagnosticCodes.IncompatibleFacet)]
     [TestCase("\"type\":\"date\",\"default\":{\"type\":\"null\"},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     [TestCase("\"type\":\"date\",\"generated\":{\"expression\":{\"kind\":\"value\",\"value\":{\"type\":\"null\"}}},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
     public void TypedDefaults_RejectInvalidShapeAndDestinationInSchemaAndValidator(string column, string code)

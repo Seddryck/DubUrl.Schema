@@ -31,11 +31,13 @@ internal static class ColumnDefaultPlanning
             throw new ColumnDefaultPlanningException(ColumnDefaultPlanningException.Unsupported,
                 $"{label} is unsupported or unresolved by '{dialect.GetType().Name}'.");
         }
-        if (string.IsNullOrWhiteSpace(plan.Sql))
+        if (string.IsNullOrWhiteSpace(plan.Sql) || !IsValidAlias(expression.Kind, plan.EquivalentContext))
         {
             throw new ColumnDefaultPlanningException(ColumnDefaultPlanningException.Incomplete,
                 $"{label} has no complete provider plan.");
         }
+        if (expression.IsContext)
+            ValidateContext(plan, column, context.AllowsNull, label);
         return plan.Sql;
     }
 
@@ -53,5 +55,29 @@ internal static class ColumnDefaultPlanning
                 $"{label} has an unsupported destination type for '{dialect.GetType().Name}'.", exception);
         }
         return new(table.Identity, column.Source, type, allowsNull, table.PhysicalOptions);
+    }
+
+    private static bool IsValidAlias(ColumnDefaultKind kind, ColumnDefaultKind? alias)
+        => alias is null || (kind, alias) is
+            (ColumnDefaultKind.CurrentUser, ColumnDefaultKind.SessionUser)
+            or (ColumnDefaultKind.SessionUser, ColumnDefaultKind.CurrentUser);
+
+    private static void ValidateContext(ColumnDefaultPlan plan, ColumnViewModel column, bool allowsNull, string label)
+    {
+        if (plan.RequiredTextCapacity is null or <= 0 || plan.MayReturnNull is null)
+        {
+            throw new ColumnDefaultPlanningException(ColumnDefaultPlanningException.Incomplete,
+                $"{label} requires provider capacity and nullability information.");
+        }
+        if (plan.RequiredTextCapacity > column.DeclaredLength)
+        {
+            throw new ColumnDefaultPlanningException(ColumnDefaultPlanningException.Unsupported,
+                $"{label} requires a length of at least {plan.RequiredTextCapacity}.");
+        }
+        if (plan.MayReturnNull is true && !allowsNull)
+        {
+            throw new ColumnDefaultPlanningException(ColumnDefaultPlanningException.Unsupported,
+                $"{label} can return NULL and requires a nullable destination.");
+        }
     }
 }

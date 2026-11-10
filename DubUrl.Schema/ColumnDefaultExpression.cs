@@ -7,7 +7,9 @@ public enum ColumnDefaultKind
     CurrentTimestamp,
     CurrentDate,
     CurrentTime,
-    CurrentUtcTimestamp
+    CurrentUtcTimestamp,
+    CurrentUser,
+    SessionUser
 }
 
 /// <summary>An allowlisted database expression evaluated when an INSERT uses the column default.</summary>
@@ -38,6 +40,14 @@ public sealed record ColumnDefaultExpression
     public static ColumnDefaultExpression CurrentUtcTimestamp(int? fractionalSecondsPrecision = null)
         => new(ColumnDefaultKind.CurrentUtcTimestamp, fractionalSecondsPrecision);
 
+    /// <summary>Gets the effective database authorization identity expression.</summary>
+    /// <value>The current-user default.</value>
+    public static ColumnDefaultExpression CurrentUser { get; } = new(ColumnDefaultKind.CurrentUser);
+    /// <summary>Gets the session authorization identity expression, including changes permitted by the database.</summary>
+    /// <value>The session-user default.</value>
+    public static ColumnDefaultExpression SessionUser { get; } = new(ColumnDefaultKind.SessionUser);
+    internal bool IsContext => Kind is ColumnDefaultKind.CurrentUser or ColumnDefaultKind.SessionUser;
+
     internal void ValidateDestination(DbType type, int? length, int? precision, int? scale)
     {
         var compatible = Kind switch
@@ -46,9 +56,12 @@ public sealed record ColumnDefaultExpression
                 type is DbType.DateTime or DbType.DateTime2 or DbType.DateTimeOffset,
             ColumnDefaultKind.CurrentDate => type == DbType.Date,
             ColumnDefaultKind.CurrentTime => type == DbType.Time,
-            _ => false
+            _ => IsContext && IsString(type) && length > 0
         };
         if (!compatible)
             throw new ArgumentException($"The column type or facets are incompatible with the {Kind} default.");
     }
+
+    private static bool IsString(DbType type)
+        => type is DbType.String or DbType.AnsiString or DbType.StringFixedLength or DbType.AnsiStringFixedLength;
 }
