@@ -6,7 +6,7 @@
     {{#if NotNullable}} NOT NULL{{/if}}{{/if~}}
     {{#if RenderPrimaryKey}}{{#if PrimaryKey}} {{#if PrimaryKey.Name}}CONSTRAINT {{identity PrimaryKey.Name}} {{/if}}PRIMARY KEY{{/if}}{{/if~}}
     {{#if RenderUnique}}{{#if Unique}} UNIQUE{{/if}}{{/if~}}
-    {{#if RenderDefault}}{{#if HasDefaultValue}} DEFAULT {{value DefaultValue}}{{/if}}{{/if~}}
+    {{#if RenderDefault}}{{#if HasDefault}} DEFAULT {{columndefault this}}{{/if}}{{/if~}}
     {{#if RenderChecks}}{{#each Checks}} CHECK ({{check this}})
     {{~ /each ~}}
     {{#each MembershipChecks}} CHECK ({{membership this}})

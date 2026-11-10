@@ -22,16 +22,17 @@ public class SchemaDocumentValidationRuleSetTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(first.ColumnRules, Has.Count.EqualTo(9));
+            Assert.That(first.ColumnRules, Has.Count.EqualTo(10));
             Assert.That(first.ForeignKeyRules, Has.Count.EqualTo(6));
             Assert.That(first.IndexRules, Has.Count.EqualTo(3));
             Assert.That(first.CheckRules, Has.Count.EqualTo(4));
             Assert.That(first.ViewDeclarationRules, Has.Count.EqualTo(1));
             Assert.That(first.ViewRules, Has.Count.EqualTo(3));
             Assert.That(first.ViewGraphRules, Has.Count.EqualTo(1));
-            Assert.That(customized.ColumnRules, Has.Count.EqualTo(8));
+            Assert.That(customized.ColumnRules, Has.Count.EqualTo(9));
             Assert.That(second.ColumnRules.Select(rule => rule.Id),
-                Does.Contain(SchemaDocumentValidationRuleIds.Columns.LogicalType));
+                Does.Contain(SchemaDocumentValidationRuleIds.Columns.LogicalType)
+                    .And.Contain(SchemaDocumentValidationRuleIds.Columns.DefaultExpression));
         });
     }
 

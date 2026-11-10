@@ -198,6 +198,7 @@ public static class SchemaDocumentValidationRuleIds
         public const string Identity = "column.identity";
         public const string Generated = "column.generated";
         public const string DefaultValue = "column.default-value";
+        public const string DefaultExpression = "column.default-expression";
         public const string NativeType = "column.native-type";
     }
 

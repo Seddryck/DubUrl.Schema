@@ -12,10 +12,16 @@ public class VarLengthColumn : Column
     public const int Unbounded = -1;
     public int Length { get; }
 
+    public VarLengthColumn(string name, System.Data.DbType type, int size, object? defaultValue, IConstraint[]? constraints,
+        string? description, NativeDatabaseType? nativeType, NativeTypeFallback nativeTypeFallback, ColumnGeneration? generation)
+        : this(name, type, size, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation, null)
+    { }
+
     public VarLengthColumn(string name, System.Data.DbType type, int size, object? defaultValue = null, IConstraint[]? constraints = null,
         string? description = null, NativeDatabaseType? nativeType = null, NativeTypeFallback nativeTypeFallback = NativeTypeFallback.Error,
-        ColumnGeneration? generation = null)
-        : base(name, type, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation)
+        ColumnGeneration? generation = null, ColumnDefaultExpression? defaultExpression = null)
+        : base(name, type, defaultValue, constraints, description, nativeType, nativeTypeFallback, generation,
+            defaultExpression, size, null, null)
     {
         if (size != Unbounded && size <= 0)
             throw new ArgumentOutOfRangeException(nameof(size), "Length must be positive or VarLengthColumn.Unbounded.");

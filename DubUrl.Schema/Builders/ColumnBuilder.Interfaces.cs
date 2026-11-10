@@ -67,9 +67,11 @@ public interface IColumnConstraintBuilder : IColumnBuilder
     /// <summary>
     /// Sets the default value for the column.
     /// </summary>
-    /// <param name="value">The default value.</param>
+    /// <param name="value">The literal default value. Use DBNull.Value for an explicit SQL NULL default.</param>
     /// <returns>The settings builder for method chaining.</returns>
     IColumnConstraintBuilder WithDefaultValue(object value);
+    IColumnConstraintBuilder WithDefaultExpression(ColumnDefaultExpression expression)
+        => throw new NotSupportedException("This column builder does not support typed defaults.");
     /// <summary>
     /// Sets whether the column is nullable.
     /// </summary>

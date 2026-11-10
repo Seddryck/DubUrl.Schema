@@ -19,6 +19,7 @@
 
 	<ItemGroup>
 	  <PackageReference Include="Didot.Core" Version="0.34.0" />
+	  <InternalsVisibleToSuffix Include=".Testing;.Documents" />
 	</ItemGroup>
 
 	<PropertyGroup>

@@ -30,7 +30,7 @@ Column-level `unique: true` and tuple declarations with an omitted or `native` p
 
 The v1 addition is optional. It leaves the meaning of existing documents intact. An explicit policy requires provider support when rendering or deploying. A tuple equivalent to the primary key stays in the document and shares the primary key's enforcement in SQL.
 
-`length` applies only to string and binary types. `precision` and `scale` apply only to `currency`, `decimal`, and `varnumeric`, and scale requires precision. Identity generation applies only to integer types. Length and precision are mutually exclusive; default, identity, and generated values are mutually exclusive.
+`length` applies only to string and binary types. `precision` and `scale` apply only to `currency`, `decimal`, and `varnumeric`, and scale requires precision. Identity generation applies only to integer types. Length and precision are mutually exclusive. Choose at most one of `default`, `defaultExpression`, `identity`, and `generated`.
 
 The supported logical type identifiers are:
 
@@ -43,9 +43,26 @@ string-fixed-length, time, uint16, uint32, uint64, varnumeric, xml
 
 Typed literal values use invariant string representations. Binary values are Base64; dates and date-times use round-trip parsing; `null` omits `value`. A column default's literal type must match the column logical type.
 
+### Expression defaults
+
+`defaultExpression` takes a symbolic `kind` and only the arguments listed below. The database evaluates the expression when an INSERT omits the column or explicitly requests DEFAULT. An explicit value, including NULL where allowed, bypasses the default. Existing v1 literal declarations use the same `default` field. Use `default: { type: "null" }` to declare a SQL NULL default explicitly.
+
+| Kind | Destination and arguments |
+|---|---|
+| `current-timestamp` | `datetime`, `datetime2`, or `datetime-offset`. Uses session-local wall time and includes the session offset for an offset destination. |
+| `current-utc-timestamp` | Same timestamp types. Uses UTC independently of session and server time zones and uses offset zero for an offset destination. |
+| `current-date` | `date`. The calendar date in the inserting session. |
+| `current-time` | `time`. The time of day in the inserting session. |
+
+Timestamps and time of day accept optional `fractionalSecondsPrecision` from 0 to 9. The provider must honor the requested precision. Omission uses the engine's default precision. Clock evaluation can follow the engine's statement or transaction clock.
+
+For fluent schemas, pass the corresponding `ColumnDefaultExpression` factory or property to `WithDefaultExpression`.
+
+Planning and SQL export require the provider's `IColumnDefaultSqlRenderer` capability. `SDD001` indicates an unsupported expression. `SDD002` indicates an incomplete provider plan. Native SQL and live qualification are tracked in [DubUrl.Providers #11](https://github.com/Seddryck/DubUrl.Providers/issues/11).
+
 `nativeType` is an intentional portability escape hatch. Its `fallback` is either `error` or `logical-type`, which tells the renderer whether an unregistered provider-native type must fail or may fall back to the portable `type`.
 
-Expressions have one of three shapes: a column reference, a typed literal value, or a function with ordered expression arguments. Comparison checks accept `=`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`. Membership values must share a type; null membership requires `match-null`. Membership and regex checks accept a column expression or a single-column function expression.
+Expressions for checks, generated columns, and views have one of three shapes: a column reference, a typed literal value, or a function with ordered expression arguments. Comparison checks accept `=`, `<>`, `!=`, `<`, `<=`, `>`, and `>=`. Membership values must share a type; null membership requires `match-null`. Membership and regex checks accept a column expression or a single-column function expression.
 
 ## JSON Schema
 

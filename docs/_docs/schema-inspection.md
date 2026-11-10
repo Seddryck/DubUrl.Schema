@@ -58,6 +58,7 @@ Stable inspection codes:
 | SDI008 | View definition is not a portable projection |
 | SDI009 | Catalog construct is not representable |
 | SDI010 | Domain schema cannot be exported losslessly to v1 |
+| SDI011 | Catalog default is unknown or incompatible with the destination |
 
 Inspection runs several catalog queries and does not establish a transaction or a database-wide snapshot. Concurrent DDL may cause inconsistent results and validation failure. For consistent exports, inspect a stable database or supply a borrowed connection with an appropriate caller-managed snapshot/transaction environment. Catalog permission filtering can conceal objects entirely; completeness is relative to visible objects and requested features, not proof of unrestricted database access.
 
@@ -104,9 +105,9 @@ The result includes success, document, isComplete, coverage and diagnostics. all
 
 The [live database QA suite in DubUrl.Providers](https://github.com/Seddryck/DubUrl.Providers/tree/1f07066a4584cc75a93ea8f3a8cb8868ea8948a6/QA/Schema) runs against disposable databases. Its inspection fixtures cover defaults, identity and generated values, indexes, constraints and views. The SQLite fixtures exercise inspection, rendering, deployment and reinspection across `main` and an attached database.
 
-## Why literal defaults have limited coverage
+## Catalog defaults
 
-The domain's Column.DefaultValue stores a typed constant. Catalog defaults are SQL expressions, so discovery recognizes only a conservative literal subset: strings, numbers, booleans, NULL and selected known catalog casts. CURRENT_TIMESTAMP, nextval(...), arbitrary function calls and arithmetic are not literal values. Discovery never evaluates them to manufacture a constant, because that would change their behavior. Some typed literals and vendor-specific CAST wrappers are also outside the recognizer. They produce incomplete-result diagnostics rather than being silently dropped.
+`Column.DefaultValue` stores a typed literal. A provider that recognizes a typed expression reports a `ColumnDefaultExpression` in `MetadataColumn.Default`. Schema preserves the expression symbolically. Providers use `DBNull.Value` for an explicit NULL default. An unrecognized catalog expression should be reported as a Defaults diagnostic or a `MetadataExpression` marker, which Schema diagnoses with `SDI011`. Plain strings are treated as literal values. The inspector maps metadata without evaluating catalog SQL.
 
 Generated columns have a separate structured expression model. Discovery currently recognizes column references, literals, and nested Length/Upper/Lower calls. Operators such as amount * 2 remain unrepresentable by the current expression contract.
 

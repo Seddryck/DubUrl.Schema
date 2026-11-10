@@ -24,6 +24,73 @@ public class SchemaSqlRendererExtensionTests
         source = builder.Build().Get<TSqlDialect>();
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TypedDefaults_UseStructuredContextAndRenderOnceThroughEitherColumnPath(bool providerOwnsDefault)
+    {
+        var tableIdentity = new DatabaseObjectName("records", "ddl_schema", "ddl_database");
+        var column = new Column("recorded", DbType.DateTimeOffset,
+            defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(3));
+        var provider = new DefaultPlanningRenderer((_, _) => new("STUB_UTC(3)"), providerOwnsDefault);
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider));
+        var schema = new Schema([new Table(tableIdentity, [column,
+            new Column("omitted", DbType.Int32), new Column("value", DbType.Int32, 7),
+            new Column("explicit_null", DbType.Int32, DBNull.Value)])]);
+
+        var sql = renderer.Plan(schema).Single().CommandText;
+        var integerType = source.DbTypeMapper.ToDictionary()[nameof(DbType.Int32)];
+        Assert.Multiple(() =>
+        {
+            Assert.That(provider.Contexts.Single().Column, Is.SameAs(column));
+            Assert.That(provider.Contexts.Single().Table, Is.EqualTo(tableIdentity));
+            Assert.That(provider.Contexts.Single().SqlType, Does.Contain("DATETIMEOFFSET").IgnoreCase);
+            Assert.That(sql, Does.Contain("[recorded] DATETIMEOFFSET DEFAULT STUB_UTC(3)").IgnoreCase);
+            Assert.That(sql, Does.Contain($"[omitted] {integerType},").And.Contain($"[value] {integerType} DEFAULT 7")
+                .And.Contain($"[explicit_null] {integerType} DEFAULT NULL").IgnoreCase);
+            Assert.That(sql.Split("STUB_UTC(3)").Length, Is.EqualTo(2));
+            Assert.That(renderer.Render(schema), Does.Contain("DEFAULT STUB_UTC(3)"));
+        });
+    }
+
+    [TestCase("no hook", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("unresolved", ColumnDefaultPlanningException.Unsupported)]
+    [TestCase("blank SQL", ColumnDefaultPlanningException.Incomplete)]
+    public void TypedDefaults_RejectUnsupportedOrIncompletePlans(string reason, string code)
+    {
+        var column = new Column("recorded", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp());
+        var table = new Table("records", [column]);
+        var provider = new DefaultPlanningRenderer((_, _) => reason switch
+        {
+            "unresolved" => null,
+            "blank SQL" => new(" "),
+            _ => new("STUB_UTC()")
+        });
+        var renderer = new SchemaScriptRenderer(reason == "no hook" ? source : new ProviderDialect(source, provider));
+        var schema = new Schema([table]);
+        Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => renderer.Plan(schema))!.Code, Is.EqualTo(code));
+        Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => renderer.Render(schema))!.Code, Is.EqualTo(code));
+    }
+
+    private sealed class DefaultPlanningRenderer(Func<IDialect, ColumnDefaultContext, ColumnDefaultPlan?> plan,
+        bool ownsDefault = false) : StandardSchemaSqlRenderer, IColumnDefaultSqlRenderer, IColumnDefinitionSqlRenderer
+    {
+        public List<ColumnDefaultContext> Contexts { get; } = [];
+
+        public ColumnDefaultPlan? PlanColumnDefault(IDialect dialect, ColumnDefaultContext context)
+        {
+            Contexts.Add(context);
+            return plan(dialect, context);
+        }
+
+        public ColumnDefinitionPlan? RenderColumnDefinition(IDialect dialect, ColumnDefinitionContext context)
+            => ownsDefault && context.DefaultExpression is not null
+                ? new($"{context.Type} DEFAULT {context.DefaultExpression}", ColumnDefinitionClauses.Default) : null;
+
+        public override string RenderObjectName(IDialect dialect, string? catalog, string? database, string? schema, string name)
+            => string.Join('.', new[] { catalog, database, schema, name }.OfType<string>()
+                .Select(part => $"[{part.Replace("]", "]]", StringComparison.Ordinal)}]"));
+    }
+
     [TestCase(false, "explicit key", "PROVIDER_NULL_POLICY")]
     [TestCase(false, null, null)]
     [TestCase(true, null, null)]

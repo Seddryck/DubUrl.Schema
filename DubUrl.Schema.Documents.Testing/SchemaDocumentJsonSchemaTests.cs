@@ -1,5 +1,6 @@
 using DubUrl.Provider.PostgreSql.Sql;
 using DubUrl.Provider.Sqlite.Sql;
+using System.Data;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -24,6 +25,7 @@ public class SchemaDocumentJsonSchemaTests
         [typeof(DatabaseObjectNameDocument)] = "databaseObjectName",
         [typeof(TableDocument)] = "table",
         [typeof(ColumnDocument)] = "column",
+        [typeof(DefaultExpressionDocument)] = "defaultExpression",
         [typeof(NativeTypeDocument)] = "nativeType",
         [typeof(IdentityColumnDocument)] = "identityColumn",
         [typeof(GeneratedColumnDocument)] = "generatedColumn",
@@ -115,6 +117,83 @@ public class SchemaDocumentJsonSchemaTests
     [TestCase("{\"version\":1,\"indexes\":[{\"identity\":{\"name\":\"i\"},\"table\":{\"name\":\"t\"},\"columns\":[{\"name\":\"c\",\"direction\":\"sideways\"}]}]}")]
     public void InvalidDocuments_AreRejected(string source)
         => Assert.That(Evaluate(source).IsValid, Is.False);
+
+    [TestCase(SchemaDocumentFormat.Json)]
+    [TestCase(SchemaDocumentFormat.Yaml)]
+    public void TypedDefaults_RoundTripEveryKind(SchemaDocumentFormat format)
+    {
+        Column[] columns =
+        [
+            new("timestamp", DbType.DateTime, defaultExpression: ColumnDefaultExpression.CurrentTimestamp()),
+            new("date", DbType.Date, defaultExpression: ColumnDefaultExpression.CurrentDate),
+            new("time", DbType.Time, defaultExpression: ColumnDefaultExpression.CurrentTime(0)),
+            new("utc_timestamp", DbType.DateTimeOffset, defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(6))
+        ];
+        var schema = new Schema([new Table("samples", columns)]);
+        var exporter = new SchemaDocumentExporter();
+        var document = exporter.Map(schema);
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, document, format);
+        if (format == SchemaDocumentFormat.Json)
+            Assert.That(Evaluate(Encoding.UTF8.GetString(stream.ToArray())).IsValid, Is.True);
+        stream.Position = 0;
+        var read = new SchemaDocumentReader().Read(stream, format);
+        var mapped = new SchemaDocumentMapper().Map(read);
+        Assert.That(read.Version, Is.EqualTo(1));
+        Assert.That(mapped.Tables.Values.Single().Columns.Values.Select(column => column.DefaultExpression),
+            Is.EqualTo(columns.Select(column => column.DefaultExpression)));
+        Assert.That(mapped.Tables.Values.Single().Columns.Values.All(column => column.DefaultValue is null && column.Generation is null), Is.True);
+    }
+
+    [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"arbitrary-sql\"}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"date\",\"defaultExpression\":{\"kind\":\"current-date\",\"fractionalSecondsPrecision\":0}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"datetime-offset\",\"defaultExpression\":{\"kind\":\"current-utc-timestamp\",\"fractionalSecondsPrecision\":10}", SchemaDocumentDiagnosticCodes.InvalidExpression)]
+    [TestCase("\"type\":\"date\",\"default\":{\"type\":\"null\"},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
+    [TestCase("\"type\":\"date\",\"generated\":{\"expression\":{\"kind\":\"value\",\"value\":{\"type\":\"null\"}}},\"defaultExpression\":{\"kind\":\"current-date\"}", SchemaDocumentDiagnosticCodes.MutuallyExclusive)]
+    public void TypedDefaults_RejectInvalidShapeAndDestinationInSchemaAndValidator(string column, string code)
+    {
+        var source = $$"""{"version":1,"tables":[{"identity":{"name":"t"},"columns":[{"name":"value",{{column}}}]}]}""";
+        Assert.That(Evaluate(source).IsValid, Is.False);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(source));
+        var document = new SchemaDocumentReader().Read(stream, SchemaDocumentFormat.Json);
+        Assert.That(new SchemaDocumentValidator().Validate(document).Select(item => item.Code), Does.Contain(code));
+    }
+
+    [TestCase("ansi-string", "sample")]
+    [TestCase("string-fixed-length", "sample")]
+    [TestCase("date", "2026-11-10")]
+    [TestCase("datetime2", "2026-11-10T08:30:00")]
+    [TestCase("currency", "9.25")]
+    [TestCase("varnumeric", "9.25")]
+    public void ExistingV1LiteralDefaults_RetainTheirLogicalType(string type, string value)
+    {
+        var document = new SchemaDocument { Version = 1, Tables = [
+            new() { Identity = new() { Name = "sample" }, Columns = [
+                new() { Name = "value", Type = type, Default = new() { Type = type, Value = value } }] }] };
+        var mapper = new SchemaDocumentMapper();
+        var schema = mapper.Map(document);
+        var exported = new SchemaDocumentExporter().Map(schema);
+        Assert.That(exported.Tables[0].Columns[0].Default!.Type, Is.EqualTo(type));
+        Assert.That(mapper.Map(exported).Tables["sample"].Columns["value"].DefaultValue,
+            Is.EqualTo(schema.Tables["sample"].Columns["value"].DefaultValue));
+    }
+
+    [Test]
+    public void ExistingV1NullLiteralDefault_RoundTripsDistinctFromAnOmittedDefault()
+    {
+        var document = new SchemaDocument { Version = 1, Tables = [
+            new() { Identity = new() { Name = "sample" }, Columns = [
+                new() { Name = "explicit_null", Type = "int32", Nullable = true, Default = new() { Type = "null" } },
+                new() { Name = "omitted", Type = "int32", Nullable = true }] }] };
+        var schema = new SchemaDocumentMapper().Map(document);
+        var builder = new DialectRegistryBuilder();
+        builder.AddDialect<PgsqlDialect>(["pgsql"]);
+        var sql = new SchemaScriptRenderer(builder.Build().Get<PgsqlDialect>()).Plan(schema).Single().CommandText;
+        Assert.That(sql, Does.Contain("\"explicit_null\" INTEGER NULL DEFAULT NULL").And.Contain("\"omitted\" INTEGER NULL"));
+        var exported = new SchemaDocumentExporter().Map(schema);
+        Assert.That(exported.Tables[0].Columns[0].Default!.Type, Is.EqualTo("null"));
+        Assert.That(exported.Tables[0].Columns[1].Default, Is.Null);
+    }
 
     [Test]
     public void JsonExample_ReadValidateMapRender_ProducesExpectedPostgresqlScript()

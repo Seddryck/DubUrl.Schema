@@ -12,6 +12,8 @@ public class ColumnViewModel
 {
     internal bool TableConsumesKeys { get; set; }
     internal string? PlannedSpecification { get; set; }
+    internal string? PlannedDefaultExpression { get; set; }
+    internal Column Source { get; }
     internal ColumnDefinitionClauses RenderedClauses { get; set; }
     public bool RenderNullability => !RenderedClauses.HasFlag(ColumnDefinitionClauses.Nullability);
     public bool RenderPrimaryKey => !TableConsumesKeys && !RenderedClauses.HasFlag(ColumnDefinitionClauses.PrimaryKey);
@@ -37,6 +39,7 @@ public class ColumnViewModel
 
     public object? DefaultValue { get; }
     public bool HasDefaultValue { get; }
+    public bool HasDefault => HasDefaultValue || Source.DefaultExpression is not null;
     public string? Description { get; }
     public NativeDatabaseType? NativeType { get; }
     public NativeTypeFallback NativeTypeFallback { get; }
@@ -52,6 +55,7 @@ public class ColumnViewModel
 
     public ColumnViewModel(Column column, bool includePrimaryKey, DatabaseObjectName? tableIdentity, bool suppressUnique)
     {
+        Source = column;
         TableIdentity = tableIdentity;
         Name = column.Name;
         Type = column.Type.ToString();

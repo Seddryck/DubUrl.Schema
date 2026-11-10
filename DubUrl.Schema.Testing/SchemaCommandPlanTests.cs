@@ -5,6 +5,7 @@ using DubUrl.Provider.Oracle.Sql;
 using DubUrl.Provider.SqlServer.Sql;
 using DubUrl.Querying.Dialects;
 using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 using Moq;
 using NUnit.Framework;
 
@@ -120,6 +121,18 @@ public class SchemaCommandPlanTests
             new Table("invalid", [new Column("unbounded", DbType.String)])]);
         Assert.Throws<ArgumentException>(() => url.Object.DeploySchema(schema));
         url.Verify(c => c.Open(), Times.Never);
+    }
+
+    [Test]
+    public void Deploy_UnsupportedTypedDefaultDoesNotOpenConnection()
+    {
+        var url = new Mock<ConnectionUrl>("mssql://./db", Mock.Of<ISchemeRegistry>());
+        url.SetupGet(connection => connection.Dialect).Returns(Dialect<TSqlDialect>());
+        var schema = new Schema([new Table("sample", [new Column("created", DbType.DateTime2,
+            defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp())])]);
+        Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => url.Object.DeploySchema(schema))!.Code,
+            Is.EqualTo(ColumnDefaultPlanningException.Unsupported));
+        url.Verify(connection => connection.Open(), Times.Never);
     }
 
     [Test]

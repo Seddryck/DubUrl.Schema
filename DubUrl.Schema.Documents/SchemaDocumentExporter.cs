@@ -134,7 +134,8 @@ public sealed class SchemaDocumentExporter
             Type = TypeName(column.Type),
             Description = column.Description,
             Nullable = !column.Constraints.OfType<NotNullableConstraint>().Any(),
-            Default = column.DefaultValue is null ? null : Literal(column.DefaultValue),
+            Default = ColumnDefaultLiteral(column),
+            DefaultExpression = column.DefaultExpression is null ? null : DefaultExpressionMapping.Export(column.DefaultExpression),
             NativeType = column.NativeType is null ? null : new()
             {
                 Name = column.NativeType.Name,
@@ -155,6 +156,23 @@ public sealed class SchemaDocumentExporter
             throw new NotSupportedException("v1 does not encode native dialect scopes.");
         if (column.Constraints.OfType<NullableConstraint>().Any() && column.Constraints.OfType<NotNullableConstraint>().Any())
             throw new NotSupportedException("Conflicting nullability constraints cannot be exported.");
+    }
+
+    private static LiteralDocument? ColumnDefaultLiteral(Column column)
+    {
+        if (column.DefaultValue is null)
+            return null;
+        var literal = Literal(column.DefaultValue is DBNull ? null : column.DefaultValue);
+        var usesColumnType = (column.DefaultValue, column.Type) switch
+        {
+            (string, DbType.AnsiString or DbType.AnsiStringFixedLength or DbType.StringFixedLength or DbType.Xml or DbType.Object) => true,
+            (DateTime, DbType.Date or DbType.DateTime2) => true,
+            (decimal, DbType.Currency or DbType.VarNumeric) => true,
+            _ => false
+        };
+        if (usesColumnType)
+            literal.Type = TypeName(column.Type);
+        return literal;
     }
 
     private static void MapColumnFacets(Column column, ColumnDocument result)
@@ -278,6 +296,6 @@ public sealed class SchemaDocumentExporter
     };
     private static string TypeName(DbType type) => SchemaDocumentTypes.Supported.Single(name =>
         SchemaDocumentTypes.TryGetDbType(name, out var candidate) && candidate == type);
-    private static DatabaseObjectNameDocument Name(DatabaseObjectName name) =>
+    internal static DatabaseObjectNameDocument Name(DatabaseObjectName name) =>
         new() { Name = name.Name, Schema = name.Schema, Database = name.Database, Catalog = name.Catalog };
 }

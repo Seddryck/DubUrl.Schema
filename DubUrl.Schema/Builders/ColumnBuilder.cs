@@ -16,6 +16,7 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     private int? Length { get; set; }
     private int? Scale { get; set; }
     private object? DefaultValue { get; set; }
+    private ColumnDefaultExpression? DefaultExpression { get; set; }
     private string? Description { get; set; }
     private NativeDatabaseType? NativeType { get; set; }
     private NativeTypeFallback NativeTypeFallback { get; set; }
@@ -59,6 +60,12 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     IColumnConstraintBuilder IColumnConstraintBuilder.WithDefaultValue(object value)
     {
         DefaultValue = value;
+        return this;
+    }
+
+    IColumnConstraintBuilder IColumnConstraintBuilder.WithDefaultExpression(ColumnDefaultExpression expression)
+    {
+        DefaultExpression = expression ?? throw new ArgumentNullException(nameof(expression));
         return this;
     }
     IColumnConstraintBuilder IColumnConstraintBuilder.WithNullable(bool value)
@@ -127,11 +134,11 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
         var constraints = Constraints.Build();
 
         if (Scale.HasValue && Length.HasValue)
-            return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation);
+            return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
 
         if (Length.HasValue)
-            return new VarLengthColumn(Name, Type, Length.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation);
+            return new VarLengthColumn(Name, Type, Length.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
 
-        return new Column(Name, Type, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation);
+        return new Column(Name, Type, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
     }
 }
