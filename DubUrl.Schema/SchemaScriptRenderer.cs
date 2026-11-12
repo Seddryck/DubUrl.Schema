@@ -243,19 +243,24 @@ public class SchemaScriptRenderer
                     source.Columns.Single(column => column.Name == name).IsKey = true;
                 var isCreated = schema.Tables.TryGetValue(key.TargetTable.Key, out var created);
                 var target = isCreated ? created! : schema.ExternalTables[key.TargetTable.Key];
-                foreach (var name in key.TargetColumns)
-                {
-                    if (isCreated && target.Columns[name].StructuredType is not null)
-                        tables.Single(item => item.Identity == target.Identity).Columns.Single(column => column.Name == name).IsKey = true;
-                    else
-                        ValidateKeyColumn(target, name);
-                }
+                ValidateTargetKeyColumns(tables, key.TargetColumns, target, isCreated);
                 if (commands is not null && Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer provider)
                 {
                     commands.AddRange(provider.PlanForeignKeyPrerequisites(Dialect, key,
                         isCreated ? TableDefinitionPlanning.Context(target, []) : null));
                 }
             }
+        }
+    }
+
+    private void ValidateTargetKeyColumns(TableViewModel[] tables, IEnumerable<string> names, Table target, bool isCreated)
+    {
+        foreach (var name in names)
+        {
+            if (isCreated && target.Columns[name].StructuredType is not null)
+                tables.Single(item => item.Identity == target.Identity).Columns.Single(column => column.Name == name).IsKey = true;
+            else
+                ValidateKeyColumn(target, name);
         }
     }
 
