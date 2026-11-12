@@ -7,13 +7,13 @@
     {{#if RenderPrimaryKey}}{{#if PrimaryKey}} {{#if PrimaryKey.Name}}CONSTRAINT {{identity PrimaryKey.Name}} {{/if}}PRIMARY KEY{{/if}}{{/if~}}
     {{#if RenderUnique}}{{#if Unique}} UNIQUE{{/if}}{{/if~}}
     {{#if RenderDefault}}{{#if HasDefault}} DEFAULT {{columndefault this}}{{/if}}{{/if~}}
-    {{#if RenderChecks}}{{#each Checks}} CHECK ({{check this}})
+    {{#unless @root.PlanProviderChecks}}{{#if RenderChecks}}{{#each Checks}} CHECK ({{check this}})
     {{~ /each ~}}
     {{#each MembershipChecks}} CHECK ({{membership this}})
     {{~ /each ~}}
     {{#each RegexChecks}} CHECK ({{regex this}})
     {{~ /each ~}}
-    {{/if~}}
+    {{/if}}{{/unless~}}
     {{#if RenderComment}}{{#if Description}}{{columncomment Description}}{{/if}}{{/if~}}
     {{#unless @last}},{{/unless}}
 {{/each}}
@@ -35,6 +35,7 @@
 {{#each ExplicitUniqueConstraints}}
     , {{> uniqueConstraint~}}
 {{/each~}}
+{{#unless @root.PlanProviderChecks}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
 {{/each~}}
@@ -44,6 +45,7 @@
 {{#each RegexChecks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{regex this}})
 {{/each~}}
+{{/unless~}}
 {{#if RenderForeignKeysInline}}
 {{#each ForeignKeys}}
     , CONSTRAINT {{identity Name}} FOREIGN KEY (
@@ -53,7 +55,7 @@
 )
 {{/each}}
 {{/if~}}
-){{tabledescription this}};
+){{tableoptions this}}{{tabledescription this}};
 {{#unless @root.PlanCommandsSeparately}}
 {{#each ExplicitUniqueIndexes}}
 {{> createIndex}}
