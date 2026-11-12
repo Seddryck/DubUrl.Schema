@@ -33,6 +33,8 @@ public class CreateSchemaRenderer : RendererEngine
         nativeTypes ??= NativeTypeRegistry.Default;
         AddFormatter("tabledescription", value => value is TableViewModel { Description: not null } table && dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer renderer
             ? renderer.RenderTableDescription(dialect, new(table.Identity.Name, table.Identity.Schema, table.Identity.Database, table.Identity.Catalog), table.Description) : "");
+        AddFormatter("tableoptions", value => value is TableViewModel table && dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer renderer
+            ? renderer.RenderTableOptions(dialect, table.Columns.Any(column => column.HasDefault)) : "");
         AddFormatter("columncomment", value => dialect.SchemaSqlRenderer.RenderColumnComment(dialect, (string)value!));
         AddFormatter("check", value => RenderCheck(value, dialect));
         AddFormatter("membership", value => RenderMembership(value, dialect));
@@ -66,6 +68,19 @@ public class CreateSchemaRenderer : RendererEngine
             throw new ArgumentException("The check formatter requires a check constraint.", nameof(value));
 
         return $"{RenderExpression(constraint.Left, dialect)} {constraint.Operator} {RenderExpression(constraint.Right, dialect)}";
+    }
+
+    internal static IReadOnlyList<SchemaCheckDefinition> RenderTableChecks(TableViewModel table, IDialect dialect)
+    {
+        IEnumerable<SchemaCheckDefinition> Render(CheckConstraint[] comparisons,
+            MembershipCheckConstraint[] memberships, RegexCheckConstraint[] regexes)
+            => comparisons.Select(check => new SchemaCheckDefinition(check.Name, RenderCheck(check, dialect)))
+                .Concat(memberships.Select(check => new SchemaCheckDefinition(check.Name, RenderMembership(check, dialect))))
+                .Concat(regexes.Select(check => new SchemaCheckDefinition(check.Name, RenderRegex(check, dialect))));
+
+        return table.Columns.Where(column => column.RenderChecks)
+            .SelectMany(column => Render(column.Checks, column.MembershipChecks, column.RegexChecks))
+            .Concat(Render(table.Checks, table.MembershipChecks, table.RegexChecks)).ToArray();
     }
 
     private static string RenderExpression(Expression expression, IDialect dialect)
@@ -240,6 +255,7 @@ public class CreateSchemaRenderer : RendererEngine
         AddPartial("createIndex", CreateIndexRenderer.StatementTemplate);
         AddPartial("uniqueConstraint", $"{typeof(CreateSchemaRenderer).Namespace}.Templates.UniqueConstraint.sql.hbs");
         AddFormatter("tabledescription", _ => "");
+        AddFormatter("tableoptions", _ => "");
         AddFormatter("columndefault", value => RenderDefault((ColumnViewModel)value!, helpers["value"]));
         if (!helpers.ContainsKey("identityprerequisites"))
             AddFormatter("identityprerequisites", _ => "");

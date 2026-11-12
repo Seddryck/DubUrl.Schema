@@ -24,6 +24,43 @@ public class SchemaSqlRendererExtensionTests
         source = builder.Build().Get<TSqlDialect>();
     }
 
+    [Test]
+    public void CommandBasedScriptsPreserveCheckNamesAndRunPrerequisitesBeforeReplacement()
+    {
+        var parent = new Table("external", [new Column("id", DbType.Int32)]);
+        var value = new ColumnIdentityExpression("id");
+        var child = new Table("child",
+            [new Column("id", DbType.Int32, DBNull.Value, [new CheckConstraint(value, ">=", new ValueExpression(0), "positive")])],
+            [new ForeignKey("child_fk", ["id"], parent.Identity, ["id"])]);
+        var model = new Schema([child], [], [], [parent]);
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, new CommandRenderer()), SchemaCreationOptions.DropIfExists);
+
+        var plan = renderer.Plan(model);
+        Assert.That(plan.Select(command => command.Operation), Is.EqualTo(new[]
+        {
+            SchemaSqlOperation.ForeignKey, SchemaSqlOperation.DropTable, SchemaSqlOperation.CreateTable,
+            SchemaSqlOperation.CreateTable, SchemaSqlOperation.ForeignKey
+        }));
+        Assert.That(plan[0].CommandText, Is.EqualTo("VERIFY external;"));
+        Assert.That(plan[2].CommandText, Does.Contain("DEFAULT NULL").And.Contain(") USING STUB;").And.Not.Contain("CHECK"));
+        Assert.That(plan[3].CommandText, Is.EqualTo("ADD positive CHECK ([id] >= 0);"));
+        Assert.That(renderer.Render(model), Is.EqualTo(string.Join(Environment.NewLine, plan.Select(command => command.CommandText.TrimEnd()))));
+    }
+
+    private sealed class CommandRenderer : StandardSchemaSqlRenderer, ISchemaCommandSqlRenderer
+    {
+        public string RenderTableOptions(IDialect dialect, bool hasDefaults) => hasDefaults ? " USING STUB" : "";
+
+        public IReadOnlyList<SchemaSqlCommand> PlanTableChecks(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyList<SchemaCheckDefinition> checks)
+            => checks.Select(check => new SchemaSqlCommand($"ADD {check.Name} CHECK ({check.Predicate});",
+                SchemaSqlOperation.CreateTable, table.ToString())).ToArray();
+
+        public IReadOnlyList<SchemaSqlCommand> PlanForeignKeyPrerequisites(IDialect dialect, ForeignKey key,
+            TableDefinitionContext? createdTarget)
+            => createdTarget is null ? [new($"VERIFY {key.TargetTable};", SchemaSqlOperation.ForeignKey)] : [];
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void StructuredTypes_PassStorageAndShapeToBothColumnRenderingPaths(bool providerOwnsColumn)

@@ -52,6 +52,9 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
+        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer)
+            return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
+
         var tables = PrepareTables(schema);
         var indexes = CreateIndexModels(schema);
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)
@@ -79,10 +82,10 @@ public class SchemaScriptRenderer
     public virtual IReadOnlyList<SchemaSqlCommand> Plan(Schema schema)
     {
         ArgumentNullException.ThrowIfNull(schema);
-        var tables = PrepareTables(schema);
+        var commands = new List<SchemaSqlCommand>();
+        var tables = PrepareTables(schema, commands);
         var indexes = CreateIndexModels(schema);
         var views = ViewDependencyPlanner.Order(schema.Views.Values).Select(view => new ViewViewModel(view)).ToArray();
-        var commands = new List<SchemaSqlCommand>();
         var provider = Dialect.SchemaSqlRenderer;
 
         void Add(RendererEngine renderer, object model, SchemaSqlOperation operation, DatabaseObjectName name)
@@ -121,11 +124,11 @@ public class SchemaScriptRenderer
         return Array.AsReadOnly(provider.PlanCommands(Dialect, commands.AsReadOnly()).ToArray());
     }
 
-    private TableViewModel[] PrepareTables(Schema schema)
+    private TableViewModel[] PrepareTables(Schema schema, List<SchemaSqlCommand>? commands = null)
     {
         ValidateCommentRendering(schema);
         var tables = CreateTableModels(schema);
-        ValidateForeignKeys(schema, tables);
+        ValidateForeignKeys(schema, tables, commands);
         MarkUniqueIndexColumns(schema, tables);
         TableDefinitionPlanning.Apply(Dialect, schema, tables);
         UniqueConstraintPlanning.Apply(Dialect, schema, tables);
@@ -142,6 +145,7 @@ public class SchemaScriptRenderer
 
     private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables, CreateIndexRenderer createIndex)
     {
+        var provider = Dialect.SchemaSqlRenderer as ISchemaCommandSqlRenderer;
         var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting,
             includeIdentityPrerequisites: false, defaultsAlreadyPlanned: true);
         foreach (var table in tables)
@@ -155,8 +159,15 @@ public class SchemaScriptRenderer
                     commands.AddRange(sequence.PlanIdentityPrerequisites(Dialect, context, identity.Seed, identity.Increment, DropExisting));
                 }
             }
-            commands.Add(new(create.Render(new { model = new { Tables = new[] { table } }, PlanCommandsSeparately = true }),
+            commands.Add(new(create.Render(new
+            {
+                model = new { Tables = new[] { table } },
+                PlanCommandsSeparately = true,
+                PlanProviderChecks = provider is not null
+            }),
                 SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            if (provider is not null)
+                commands.AddRange(provider.PlanTableChecks(Dialect, table.Identity, CreateSchemaRenderer.RenderTableChecks(table, Dialect)));
             foreach (var index in table.ExplicitUniqueIndexes)
             {
                 var sql = createIndex.Render(new { model = new { Indexes = new[] { index } } });
@@ -220,7 +231,7 @@ public class SchemaScriptRenderer
         return tables.ToArray();
     }
 
-    private void ValidateForeignKeys(Schema schema, TableViewModel[] tables)
+    private void ValidateForeignKeys(Schema schema, TableViewModel[] tables, List<SchemaSqlCommand>? commands)
     {
         // Validate both endpoints, including metadata for pre-existing reference tables.
         foreach (var table in schema.Tables.Values)
@@ -238,6 +249,11 @@ public class SchemaScriptRenderer
                         tables.Single(item => item.Identity == target.Identity).Columns.Single(column => column.Name == name).IsKey = true;
                     else
                         ValidateKeyColumn(target, name);
+                }
+                if (commands is not null && Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer provider)
+                {
+                    commands.AddRange(provider.PlanForeignKeyPrerequisites(Dialect, key,
+                        isCreated ? TableDefinitionPlanning.Context(target, []) : null));
                 }
             }
         }
