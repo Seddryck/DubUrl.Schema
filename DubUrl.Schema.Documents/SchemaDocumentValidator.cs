@@ -226,6 +226,11 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         List<SchemaDocumentDiagnostic> diagnostics)
     {
         var tablePath = $"tables[{tableIndex}]";
+        if (table.Annotations is not null && table.Annotations.Values.Any(value => value is null))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                "Table annotations require string values.", $"{tablePath}.annotations"));
+        }
         var columns = table.Columns ?? [];
         var columnLookup = new Dictionary<string, ColumnDocument>(StringComparer.Ordinal);
         for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)

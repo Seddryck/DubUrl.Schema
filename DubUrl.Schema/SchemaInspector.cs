@@ -17,7 +17,6 @@ public sealed class SchemaInspector
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(connection);
-        options ??= new();
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
@@ -40,6 +39,10 @@ public sealed class SchemaInspector
         ArgumentNullException.ThrowIfNull(borrowed);
         ArgumentNullException.ThrowIfNull(reader);
         options ??= new();
+        if (ReferenceEquals(options.Features, new DiscoveryOptions().Features)
+            && reader.Capabilities.TryGetValue(SchemaFeature.Annotations, out var annotationCoverage)
+            && annotationCoverage == MetadataCoverage.Available)
+            options = options with { Features = [.. options.Features, SchemaFeature.Annotations] };
         cancellationToken.ThrowIfCancellationRequested();
         if (borrowed.State != System.Data.ConnectionState.Open)
             throw new ArgumentException("A borrowed connection must already be open.", nameof(borrowed));
@@ -191,7 +194,7 @@ public sealed class SchemaInspector
             unique.Key.Columns.Select(name => byName[name]).ToArray(),
             unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));
 
-        return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment);
+        return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment, null, table.Annotations);
     }
 
     private static IEnumerable<Index> MapIndexes(MetadataTable table,

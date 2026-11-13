@@ -20,5 +20,7 @@ public interface ITableBuilder
 {
     ITableBuilder WithDescription(string? description);
     ITableBuilder WithPhysicalOptions(DubUrl.Querying.Dialects.TablePhysicalOptions options);
+    ITableBuilder WithAnnotations(IReadOnlyDictionary<string, string> annotations)
+        => throw new NotSupportedException("This table builder does not support annotations.");
     Table Build();
 }

@@ -22,6 +22,7 @@ public sealed class TableDocument
 {
     public DatabaseObjectNameDocument Identity { get; set; } = new();
     public string? Description { get; set; }
+    public Dictionary<string, string>? Annotations { get; set; }
     public List<ColumnDocument> Columns { get; set; } = [];
     public PrimaryKeyDocument? PrimaryKey { get; set; }
     public List<UniqueConstraintDocument> UniqueConstraints { get; set; } = [];

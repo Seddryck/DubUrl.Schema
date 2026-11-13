@@ -25,6 +25,33 @@ public class SchemaSqlRendererExtensionTests
     }
 
     [Test]
+    public void TableAnnotationsRequireAnExplicitProviderHook()
+    {
+        var identity = new DatabaseObjectName("annotated");
+        var table = new Table(identity, [new("id", DbType.Int32)], null, null, null,
+            new Dictionary<string, string> { ["myapp.source"] = "ERP" });
+        var schema = new Schema([table]);
+        var unsupported = new SchemaScriptRenderer(new ProviderDialect(source, StandardSchemaSqlRenderer.Instance));
+        Assert.That(() => unsupported.Render(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains("annotated"));
+        Assert.That(() => unsupported.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains("annotated"));
+
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, new AnnotationRenderer()));
+        var plainTable = new Table("plain", [new("id", DbType.Int32)]);
+        var plan = renderer.Plan(new([table, plainTable]));
+        Assert.That(plan, Has.Count.EqualTo(3));
+        Assert.That(plan[0].Operation, Is.EqualTo(SchemaSqlOperation.CreateTable));
+        Assert.That(plan[1].CommandText, Is.EqualTo("ANNOTATE annotated ERP;"));
+        Assert.That(plan[2].Operation, Is.EqualTo(SchemaSqlOperation.CreateTable));
+    }
+
+    private sealed class AnnotationRenderer : StandardSchemaSqlRenderer, ITableAnnotationSqlRenderer
+    {
+        public IReadOnlyList<SchemaSqlCommand> PlanTableAnnotations(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyDictionary<string, string> annotations)
+            => [new($"ANNOTATE {table.Name} {annotations["myapp.source"]};", SchemaSqlOperation.Comment, table.ToString())];
+    }
+
+    [Test]
     public void CommandBasedScriptsPreserveCheckNamesAndRunPrerequisitesBeforeReplacement()
     {
         var parent = new Table("external", [new Column("id", DbType.Int32)]);

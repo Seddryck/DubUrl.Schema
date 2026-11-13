@@ -76,7 +76,7 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
             foreignKey.SourceColumns,
             MapIdentity(foreignKey.TargetTable),
             foreignKey.TargetColumns)));
-        return new Table(MapIdentity(document.Identity), columns, constraints.ToArray(), document.Description);
+        return new Table(MapIdentity(document.Identity), columns, constraints.ToArray(), document.Description, null, document.Annotations);
     }
 
     private Column MapColumn(ColumnDocument document)
