@@ -57,10 +57,9 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table => table.Annotations.Count > 0))
+        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer
+            || schema.Tables.Values.Any(table => table.Annotations.Count > 0 || table.Hierarchy is not null))
             return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
-
-        schema = HierarchyPlanning.Expand(schema, Dialect, Options, NativeTypes);
         var tables = PrepareTables(schema);
         var indexes = CreateIndexModels(schema);
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)

@@ -46,7 +46,8 @@ internal static class HierarchyPlanning
 
             ValidateAdditions(table, storage);
             var expanded = new Table(table.Identity, [.. table.Columns.Values, .. storage.Columns],
-                [.. table.Constraints.OfType<Constraint>(), .. storage.Constraints], table.Description, table.PhysicalOptions, table.Annotations);
+                [.. table.Constraints.OfType<Constraint>(), .. storage.Constraints], table.Description, table.PhysicalOptions,
+                MergeAnnotations(table, storage, dialect));
             ValidateStorage(expanded, storage, dialect, nativeTypes);
             return (new(table.Identity, storage.Representation, storage.ParentExistenceEnforced, null), expanded);
         }
@@ -119,6 +120,24 @@ internal static class HierarchyPlanning
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{table.Key}\0{parentName}"));
         return "FK_Hierarchy_" + Convert.ToHexString(hash.AsSpan(0, 8));
+    }
+
+    private static IReadOnlyDictionary<string, string> MergeAnnotations(Table table, HierarchyStoragePlan storage, IDialect dialect)
+    {
+        if (storage.TableAnnotations is not { Count: > 0 } additions)
+            return table.Annotations;
+        if (dialect.SchemaSqlRenderer is not ITableAnnotationSqlRenderer renderer)
+            throw new NotSupportedException("The provider cannot render its hierarchy annotations.");
+
+        var annotations = new Dictionary<string, string>(table.Annotations, StringComparer.Ordinal);
+        foreach (var addition in additions)
+        {
+            if (!annotations.TryAdd(addition.Key, addition.Value))
+                throw new ArgumentException($"Generated hierarchy annotation '{addition.Key}' already exists.");
+        }
+
+        _ = renderer.PlanTableAnnotations(dialect, table.Identity, annotations);
+        return annotations;
     }
 
     private static void ValidateAdditions(Table table, HierarchyStoragePlan storage)

@@ -7,6 +7,10 @@ namespace DubUrl.Schema.Renderers;
 internal static class SqlExpressionRenderer
 {
     public static string Render(Expression expression, IDialect dialect)
+        => (dialect.SchemaSqlRenderer as IHierarchySqlRenderer)?.RenderHierarchyExpression(dialect, expression)
+            ?? RenderPortable(expression, dialect);
+
+    private static string RenderPortable(Expression expression, IDialect dialect)
         => expression switch
         {
             ColumnIdentityExpression column => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, column.Name),
@@ -16,8 +20,7 @@ internal static class SqlExpressionRenderer
             ColumnExpression column => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, column.Column.Name),
             FunctionExpression function =>
                 $"{ResolveFunction(function.Function, dialect.SqlFunctionMapper)}({string.Join(", ", function.Expressions.Select(item => Render(item, dialect)))})",
-            _ => (dialect.SchemaSqlRenderer as IHierarchySqlRenderer)?.RenderHierarchyExpression(dialect, expression)
-                ?? throw new ArgumentException(
+            _ => throw new ArgumentException(
                 $"Expression type '{expression.GetType().Name}' is not supported for SQL rendering.",
                 nameof(expression))
         };
