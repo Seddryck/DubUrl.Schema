@@ -129,7 +129,7 @@ public class SchemaCommandPlanTests
         var url = new Mock<ConnectionUrl>("mssql://./db", Mock.Of<ISchemeRegistry>());
         url.SetupGet(connection => connection.Dialect).Returns(Dialect<TSqlDialect>());
         var schema = new Schema([new Table("sample", [new Column("created", DbType.DateTime2,
-            defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp())])]);
+            defaultExpression: ColumnDefaultExpression.CurrentUtcTimestamp(9))])]);
         Assert.That(Assert.Throws<ColumnDefaultPlanningException>(() => url.Object.DeploySchema(schema))!.Code,
             Is.EqualTo(ColumnDefaultPlanningException.Unsupported));
         url.Verify(connection => connection.Open(), Times.Never);

@@ -52,7 +52,7 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer)
+        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table => table.Annotations.Count > 0))
             return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
 
         var tables = PrepareTables(schema);
@@ -102,7 +102,7 @@ public class SchemaScriptRenderer
         }
 
         var createIndex = new CreateIndexRenderer(Dialect);
-        AddTableCommands(commands, tables, createIndex);
+        AddTableCommands(commands, schema, tables, createIndex);
         var foreignKeys = new ForeignKeyRenderer(Dialect);
         foreach (var table in tables.Where(table => !table.RenderForeignKeysInline))
         {
@@ -143,7 +143,7 @@ public class SchemaScriptRenderer
         return schema.Indexes.Values.Select(index => new IndexViewModel(index) { ConsumedByTable = consumedByTable }).ToArray();
     }
 
-    private void AddTableCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables, CreateIndexRenderer createIndex)
+    private void AddTableCommands(List<SchemaSqlCommand> commands, Schema schema, IEnumerable<TableViewModel> tables, CreateIndexRenderer createIndex)
     {
         var provider = Dialect.SchemaSqlRenderer as ISchemaCommandSqlRenderer;
         var create = new CreateSchemaRenderer(Dialect, NativeTypes, DropExisting,
@@ -166,6 +166,13 @@ public class SchemaScriptRenderer
                 PlanProviderChecks = provider is not null
             }),
                 SchemaSqlOperation.CreateTable, table.Identity.ToString()));
+            var annotations = schema.Tables[table.Identity.Key].Annotations;
+            if (annotations.Count > 0)
+            {
+                if (Dialect.SchemaSqlRenderer is not ITableAnnotationSqlRenderer annotationRenderer)
+                    throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render annotations for table '{table.Identity}'.");
+                commands.AddRange(annotationRenderer.PlanTableAnnotations(Dialect, table.Identity, annotations));
+            }
             if (provider is not null)
                 commands.AddRange(provider.PlanTableChecks(Dialect, table.Identity, CreateSchemaRenderer.RenderTableChecks(table, Dialect)));
             foreach (var index in table.ExplicitUniqueIndexes)

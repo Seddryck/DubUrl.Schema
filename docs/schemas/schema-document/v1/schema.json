@@ -62,6 +62,11 @@
       "properties": {
         "identity": { "description": "The table's structured identity.", "$ref": "#/$defs/databaseObjectName" },
         "description": { "description": "Optional human-readable table documentation.", "type": "string" },
+        "annotations": {
+          "description": "Optional user-defined table annotations.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "columns": {
           "description": "Columns in declaration and rendering order.",
           "type": "array",

@@ -30,7 +30,8 @@ public class SchemaDocumentExportTests
         var text = new VarLengthColumn("name", DbType.String, 40, "é \"line\"\n😀", [new NullableConstraint()], description: "hello");
         var amount = new NumericColumn("amount", DbType.Decimal, 10, 3, 12.125m, [new NotNullableConstraint()]);
         var table = new Table(new DatabaseObjectName("quoted.table", "a.schema"), [id, text, amount],
-            [new PrimaryKeyConstraint([amount, id], "pk"), new CheckConstraint(new ColumnIdentityExpression("amount"), ">", new ValueExpression(0m), "positive")], "table");
+            [new PrimaryKeyConstraint([amount, id], "pk"), new CheckConstraint(new ColumnIdentityExpression("amount"), ">", new ValueExpression(0m), "positive")],
+            "table", null, new Dictionary<string, string> { ["myapp.Source"] = "ERP", ["myapp.source"] = "é \"line\"\n😀", ["empty"] = "" });
         var schema = new Schema([table], [new Index(new DatabaseObjectName("ix", "a.schema"), table.Identity, [new IndexColumn("name", IndexSortDirection.Descending)], true)]);
         var exporter = new SchemaDocumentExporter();
         using var stream = new MemoryStream();
@@ -42,6 +43,7 @@ public class SchemaDocumentExportTests
         Assert.Multiple(() =>
         {
             Assert.That(actual.Identity, Is.EqualTo(table.Identity));
+            Assert.That(actual.Annotations, Is.EqualTo(table.Annotations));
             Assert.That(actual.Columns.Keys, Is.EqualTo(table.Columns.Keys));
             Assert.That(actual.Columns["name"].DefaultValue, Is.EqualTo(text.DefaultValue));
             Assert.That(((NumericColumn)actual.Columns["amount"]).Scale, Is.EqualTo(3));

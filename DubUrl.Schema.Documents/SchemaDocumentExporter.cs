@@ -63,6 +63,7 @@ public sealed class SchemaDocumentExporter
         {
             Identity = Name(table.Identity),
             Description = table.Description,
+            Annotations = new Dictionary<string, string>(table.Annotations, StringComparer.Ordinal),
             Columns = table.Columns.Values.Select(Column).ToList()
         };
         foreach (var constraint in table.Constraints)

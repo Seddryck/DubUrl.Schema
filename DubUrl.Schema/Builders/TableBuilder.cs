@@ -15,6 +15,13 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
     private TableConstraintCollectionBuilder Constraints { get; set; } = [];
     private string? Description { get; set; }
     private DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; set; }
+    private IReadOnlyDictionary<string, string>? Annotations { get; set; }
+
+    public ITableBuilder WithAnnotations(IReadOnlyDictionary<string, string> annotations)
+    {
+        Annotations = annotations ?? throw new ArgumentNullException(nameof(annotations));
+        return this;
+    }
 
     public ITableBuilder WithPhysicalOptions(DubUrl.Querying.Dialects.TablePhysicalOptions options)
     {
@@ -91,6 +98,6 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (duplicateConstraintNames.Length > 0)
             throw new InvalidOperationException($"Constraint names must be unique within table '{Name}': {string.Join(", ", duplicateConstraintNames)}.");
 
-        return new Table(Identity!, columns, constraints, Description, PhysicalOptions);
+        return new Table(Identity!, columns, constraints, Description, PhysicalOptions, Annotations);
     }
 }

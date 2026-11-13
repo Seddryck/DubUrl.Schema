@@ -9,6 +9,46 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task Inspect_RequestsAnnotationsByDefaultOnlyWhenSupported(bool supported)
+    {
+        var reader = new Mock<ISchemaMetadataReader>();
+        reader.SetupGet(value => value.Capabilities).Returns(new Dictionary<SchemaFeature, MetadataCoverage>
+        {
+            [SchemaFeature.Annotations] = supported ? MetadataCoverage.Available : MetadataCoverage.Unsupported,
+        });
+        var connection = new Mock<System.Data.Common.DbConnection>();
+        connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
+        reader.Setup(value => value.ReadAsync(connection.Object, It.IsAny<DiscoveryOptions>(), default))
+            .ReturnsAsync((System.Data.Common.DbConnection _, DiscoveryOptions options, CancellationToken _) =>
+                new SchemaMetadata([], options.Features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []));
+
+        var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object);
+
+        Assert.That(result.IsComplete, Is.True);
+        Assert.That(result.Coverage.ContainsKey(SchemaFeature.Annotations), Is.EqualTo(supported));
+    }
+
+    [Test]
+    public void Map_PreservesTableAnnotationsAsAnImmutableSnapshot()
+    {
+        var annotations = new Dictionary<string, string> { ["myapp.Source"] = "ERP", ["myapp.source"] = "" };
+        var table = new MetadataTable(new("items"), [new("id", 1, DbType.Int32, false)]) { Annotations = annotations };
+        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Annotations];
+        var metadata = new SchemaMetadata([table], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []);
+
+        var result = new SchemaInspector().Map(metadata, new() { Features = features });
+        annotations.Clear();
+
+        Assert.That(result.IsComplete, Is.True);
+        Assert.That(result.Schema!.Tables.Values.Single().Annotations, Is.EquivalentTo(new Dictionary<string, string>
+        {
+            ["myapp.Source"] = "ERP",
+            ["myapp.source"] = "",
+        }));
+    }
+
     [TestCase("complete", false)]
     [TestCase("incomplete", false)]
     [TestCase("incomplete", true)]
