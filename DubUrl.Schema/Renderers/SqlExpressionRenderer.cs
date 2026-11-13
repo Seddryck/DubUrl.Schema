@@ -7,6 +7,10 @@ namespace DubUrl.Schema.Renderers;
 internal static class SqlExpressionRenderer
 {
     public static string Render(Expression expression, IDialect dialect)
+        => (dialect.SchemaSqlRenderer as IHierarchySqlRenderer)?.RenderHierarchyExpression(dialect, expression)
+            ?? RenderPortable(expression, dialect);
+
+    private static string RenderPortable(Expression expression, IDialect dialect)
         => expression switch
         {
             ColumnIdentityExpression column => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, column.Name),

@@ -10,6 +10,10 @@ using DubUrl.Schema.Renderers;
 namespace DubUrl.Schema;
 public static class ConnectionUrlExtensions
 {
+    public static IReadOnlyList<HierarchyPlan> PreflightHierarchies(this ConnectionUrl connectionUrl, Schema schema,
+        SchemaCreationOptions options = SchemaCreationOptions.None)
+        => new SchemaScriptRenderer(connectionUrl.Dialect, options).PreflightHierarchies(schema);
+
     public static void DeploySchema(this ConnectionUrl connectionUrl, Schema schema, SchemaCreationOptions options = SchemaCreationOptions.None)
     {
         var plan = new SchemaScriptRenderer(connectionUrl.Dialect, options).Plan(schema);

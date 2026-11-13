@@ -16,6 +16,13 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
     private string? Description { get; set; }
     private DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; set; }
     private IReadOnlyDictionary<string, string>? Annotations { get; set; }
+    private Hierarchy? Hierarchy { get; set; }
+
+    public ITableBuilder WithHierarchy(Hierarchy hierarchy)
+    {
+        Hierarchy = hierarchy ?? throw new ArgumentNullException(nameof(hierarchy));
+        return this;
+    }
 
     public ITableBuilder WithAnnotations(IReadOnlyDictionary<string, string> annotations)
     {
@@ -98,6 +105,6 @@ public class TableBuilder : ITableColumnCollectionBuilder, ITableConstraintColle
         if (duplicateConstraintNames.Length > 0)
             throw new InvalidOperationException($"Constraint names must be unique within table '{Name}': {string.Join(", ", duplicateConstraintNames)}.");
 
-        return new Table(Identity!, columns, constraints, Description, PhysicalOptions, Annotations);
+        return new Table(Identity!, columns, constraints, Description, PhysicalOptions, Annotations, Hierarchy);
     }
 }
