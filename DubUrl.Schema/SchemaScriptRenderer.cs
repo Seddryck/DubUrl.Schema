@@ -52,7 +52,8 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table => table.Annotations.Count > 0))
+        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table =>
+            table.Annotations.Count > 0 || table.Columns.Values.Any(column => column.Annotations.Count > 0)))
             return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
 
         var tables = PrepareTables(schema);
@@ -166,12 +167,21 @@ public class SchemaScriptRenderer
                 PlanProviderChecks = provider is not null
             }),
                 SchemaSqlOperation.CreateTable, table.Identity.ToString()));
-            var annotations = schema.Tables[table.Identity.Key].Annotations;
+            var definition = schema.Tables[table.Identity.Key];
+            var annotations = definition.Annotations;
             if (annotations.Count > 0)
             {
                 if (Dialect.SchemaSqlRenderer is not ITableAnnotationSqlRenderer annotationRenderer)
                     throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render annotations for table '{table.Identity}'.");
                 commands.AddRange(annotationRenderer.PlanTableAnnotations(Dialect, table.Identity, annotations));
+            }
+            var annotatedColumns = definition.Columns.Values.Where(column => column.Annotations.Count > 0)
+                .ToDictionary(column => column.Name, column => column.Annotations, StringComparer.Ordinal);
+            if (annotatedColumns.Count > 0)
+            {
+                if (Dialect.SchemaSqlRenderer is not IColumnAnnotationSqlRenderer columnAnnotationRenderer)
+                    throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render column annotations for table '{table.Identity}'.");
+                commands.AddRange(columnAnnotationRenderer.PlanColumnAnnotations(Dialect, table.Identity, annotatedColumns));
             }
             if (provider is not null)
                 commands.AddRange(provider.PlanTableChecks(Dialect, table.Identity, CreateSchemaRenderer.RenderTableChecks(table, Dialect)));

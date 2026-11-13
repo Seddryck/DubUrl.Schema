@@ -90,21 +90,22 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
             ? NativeTypeFallback.LogicalType
             : NativeTypeFallback.Error;
         var generation = MapGeneration(document);
+        var annotations = document.Annotations ?? [];
 
         return document switch
         {
             { StructuredType: not null } => new Column(document.Name!,
                 StructuredTypeMapping.Map(document, "column"), defaultValue, constraints, document.Description,
-                generation as GeneratedColumnGeneration),
+                generation as GeneratedColumnGeneration) { Annotations = annotations },
             { Length: not null } => new VarLengthColumn(
                 document.Name!, type, document.Length.Value, defaultValue, constraints,
-                document.Description, nativeType, fallback, generation, defaultExpression),
+                document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations },
             { Precision: not null } => new NumericColumn(
                 document.Name!, type, document.Precision.Value, document.Scale ?? 0, defaultValue,
-                constraints, document.Description, nativeType, fallback, generation, defaultExpression),
+                constraints, document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations },
             _ => new Column(
                 document.Name!, type, defaultValue, constraints, document.Description,
-                nativeType, fallback, generation, defaultExpression)
+                nativeType, fallback, generation, defaultExpression) { Annotations = annotations }
         };
     }
 

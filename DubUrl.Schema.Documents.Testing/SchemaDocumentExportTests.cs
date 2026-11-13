@@ -27,7 +27,10 @@ public class SchemaDocumentExportTests
     public void Export_RoundTrip_PreservesOrderFacetsKeysGenerationAndUnicode(SchemaDocumentFormat format)
     {
         var id = new Column("id", DbType.Int32, constraints: [new NotNullableConstraint()], generation: new IdentityColumnGeneration(10, 2));
-        var text = new VarLengthColumn("name", DbType.String, 40, "é \"line\"\n😀", [new NullableConstraint()], description: "hello");
+        var text = new VarLengthColumn("name", DbType.String, 40, "é \"line\"\n😀", [new NullableConstraint()], description: "hello")
+        {
+            Annotations = new Dictionary<string, string> { ["myapp.Source"] = "é \"line\"\n😀", ["myapp.source"] = "" }
+        };
         var amount = new NumericColumn("amount", DbType.Decimal, 10, 3, 12.125m, [new NotNullableConstraint()]);
         var table = new Table(new DatabaseObjectName("quoted.table", "a.schema"), [id, text, amount],
             [new PrimaryKeyConstraint([amount, id], "pk"), new CheckConstraint(new ColumnIdentityExpression("amount"), ">", new ValueExpression(0m), "positive")],
@@ -46,6 +49,9 @@ public class SchemaDocumentExportTests
             Assert.That(actual.Annotations, Is.EqualTo(table.Annotations));
             Assert.That(actual.Columns.Keys, Is.EqualTo(table.Columns.Keys));
             Assert.That(actual.Columns["name"].DefaultValue, Is.EqualTo(text.DefaultValue));
+            Assert.That(actual.Columns["name"].Description, Is.EqualTo(text.Description));
+            Assert.That(actual.Columns["name"].Annotations, Is.EqualTo(text.Annotations));
+            Assert.That(actual.Columns["id"].Annotations, Is.Empty);
             Assert.That(((NumericColumn)actual.Columns["amount"]).Scale, Is.EqualTo(3));
             Assert.That(((IdentityColumnGeneration)actual.Columns["id"].Generation!).Increment, Is.EqualTo(2));
             Assert.That(actual.Constraints.OfType<PrimaryKeyConstraint>().Single().Columns.Keys, Is.EqualTo(new[] { "amount", "id" }));

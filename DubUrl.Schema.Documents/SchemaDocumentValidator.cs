@@ -343,6 +343,11 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         IReadOnlyList<ColumnDocument> columns,
         List<SchemaDocumentDiagnostic> diagnostics)
     {
+        if (column.Annotations is not null && column.Annotations.Values.Any(value => value is null))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
+                "Column annotations require string values.", $"{path}.annotations"));
+        }
         RunRules(new ColumnValidationContext(column, path, columns, ValueConverter), rules.ColumnRules, diagnostics);
         ValidateChecks(column.Checks ?? [], $"{path}.checks", columns, diagnostics);
     }
