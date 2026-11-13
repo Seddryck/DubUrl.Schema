@@ -39,10 +39,15 @@ public sealed class SchemaInspector
         ArgumentNullException.ThrowIfNull(borrowed);
         ArgumentNullException.ThrowIfNull(reader);
         options ??= new();
-        if (ReferenceEquals(options.Features, new DiscoveryOptions().Features)
-            && reader.Capabilities.TryGetValue(SchemaFeature.Annotations, out var annotationCoverage)
-            && annotationCoverage == MetadataCoverage.Available)
-            options = options with { Features = [.. options.Features, SchemaFeature.Annotations] };
+        if (ReferenceEquals(options.Features, new DiscoveryOptions().Features))
+        {
+            var capabilities = reader.Capabilities;
+            var annotations = new[] { SchemaFeature.Annotations, SchemaFeature.ColumnAnnotations }
+                .Where(feature => capabilities?.TryGetValue(feature, out var coverage) == true && coverage == MetadataCoverage.Available)
+                .ToArray();
+            if (annotations.Length > 0)
+                options = options with { Features = [.. options.Features, .. annotations] };
+        }
         cancellationToken.ThrowIfCancellationRequested();
         if (borrowed.State != System.Data.ConnectionState.Open)
             throw new ArgumentException("A borrowed connection must already be open.", nameof(borrowed));
@@ -339,7 +344,8 @@ public sealed class SchemaInspector
         }
         return new Column(column.Name, type, sqlNull ? DBNull.Value : null,
             [column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint()],
-            column.Comment, MapGeneration(column) as GeneratedColumnGeneration);
+            column.Comment, MapGeneration(column) as GeneratedColumnGeneration)
+        { Annotations = column.Annotations };
     }
 
     private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression = null)
@@ -351,12 +357,12 @@ public sealed class SchemaInspector
         var type = column.Type.Value;
         return column.Length is { } length
             ? new VarLengthColumn(column.Name, type, length, defaultValue, constraints, column.Comment, native,
-                generation: generation, defaultExpression: expression)
+                generation: generation, defaultExpression: expression) { Annotations = column.Annotations }
             : column.Precision is { } precision
                 ? new NumericColumn(column.Name, type, precision, column.Scale ?? 0, defaultValue, constraints, column.Comment, native,
-                    generation: generation, defaultExpression: expression)
+                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations }
                 : new Column(column.Name, type, defaultValue, constraints, column.Comment, native,
-                    generation: generation, defaultExpression: expression);
+                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations };
     }
 
     private static Expression Expression(MetadataExpression expression) => expression.Kind switch

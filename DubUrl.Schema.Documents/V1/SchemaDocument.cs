@@ -43,6 +43,7 @@ public sealed class ColumnDocument
     public LiteralDocument? Default { get; set; }
     public DefaultExpressionDocument? DefaultExpression { get; set; }
     public string? Description { get; set; }
+    public Dictionary<string, string>? Annotations { get; set; }
     public NativeTypeDocument? NativeType { get; set; }
     public IdentityColumnDocument? Identity { get; set; }
     public GeneratedColumnDocument? Generated { get; set; }

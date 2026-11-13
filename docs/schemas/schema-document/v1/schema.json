@@ -115,6 +115,11 @@
         "default": { "description": "A typed literal default value, separate from column generation.", "$ref": "#/$defs/literal" },
         "defaultExpression": { "description": "An allowlisted expression evaluated when an INSERT uses the default.", "$ref": "#/$defs/defaultExpression" },
         "description": { "description": "Optional human-readable column documentation.", "type": "string" },
+        "annotations": {
+          "description": "Optional user-defined column annotations.",
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
         "nativeType": { "description": "An optional provider-native type override and fallback policy.", "$ref": "#/$defs/nativeType" },
         "identity": { "description": "Identity or auto-increment generation settings.", "$ref": "#/$defs/identityColumn" },
         "generated": { "description": "Expression-based generated column settings.", "$ref": "#/$defs/generatedColumn" },

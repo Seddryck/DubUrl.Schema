@@ -135,6 +135,7 @@ public sealed class SchemaDocumentExporter
             Type = column.StructuredType is null ? TypeName(column.Type) : null,
             StructuredType = column.StructuredType is { } structured ? StructuredTypeMapping.Export(structured) : null,
             Description = column.Description,
+            Annotations = column.Annotations.Count == 0 ? null : new Dictionary<string, string>(column.Annotations, StringComparer.Ordinal),
             Nullable = !column.Constraints.OfType<NotNullableConstraint>().Any(),
             Default = ColumnDefaultLiteral(column),
             DefaultExpression = column.DefaultExpression is null ? null : DefaultExpressionMapping.Export(column.DefaultExpression),

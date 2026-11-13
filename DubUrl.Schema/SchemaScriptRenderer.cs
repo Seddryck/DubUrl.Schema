@@ -52,7 +52,8 @@ public class SchemaScriptRenderer
 
     public virtual string Render(Schema schema)
     {
-        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table => table.Annotations.Count > 0))
+        if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table =>
+            table.Annotations.Count > 0 || table.Columns.Values.Any(column => column.Annotations.Count > 0)))
             return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
 
         var tables = PrepareTables(schema);
@@ -166,13 +167,7 @@ public class SchemaScriptRenderer
                 PlanProviderChecks = provider is not null
             }),
                 SchemaSqlOperation.CreateTable, table.Identity.ToString()));
-            var annotations = schema.Tables[table.Identity.Key].Annotations;
-            if (annotations.Count > 0)
-            {
-                if (Dialect.SchemaSqlRenderer is not ITableAnnotationSqlRenderer annotationRenderer)
-                    throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render annotations for table '{table.Identity}'.");
-                commands.AddRange(annotationRenderer.PlanTableAnnotations(Dialect, table.Identity, annotations));
-            }
+            AddAnnotationCommands(commands, schema.Tables[table.Identity.Key]);
             if (provider is not null)
                 commands.AddRange(provider.PlanTableChecks(Dialect, table.Identity, CreateSchemaRenderer.RenderTableChecks(table, Dialect)));
             foreach (var index in table.ExplicitUniqueIndexes)
@@ -181,6 +176,24 @@ public class SchemaScriptRenderer
                 commands.Add(new(sql, SchemaSqlOperation.CreateIndex, index.Identity.ToString()));
             }
         }
+    }
+
+    private void AddAnnotationCommands(List<SchemaSqlCommand> commands, Table table)
+    {
+        if (table.Annotations.Count > 0)
+        {
+            if (Dialect.SchemaSqlRenderer is not ITableAnnotationSqlRenderer renderer)
+                throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render annotations for table '{table.Identity}'.");
+            commands.AddRange(renderer.PlanTableAnnotations(Dialect, table.Identity, table.Annotations));
+        }
+
+        var annotatedColumns = table.Columns.Values.Where(column => column.Annotations.Count > 0)
+            .ToDictionary(column => column.Name, column => column.Annotations, StringComparer.Ordinal);
+        if (annotatedColumns.Count == 0)
+            return;
+        if (Dialect.SchemaSqlRenderer is not IColumnAnnotationSqlRenderer columnRenderer)
+            throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render column annotations for table '{table.Identity}'.");
+        commands.AddRange(columnRenderer.PlanColumnAnnotations(Dialect, table.Identity, annotatedColumns));
     }
 
     private void AddCommentCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)

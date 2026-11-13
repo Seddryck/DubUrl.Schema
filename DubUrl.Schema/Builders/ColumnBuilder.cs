@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.ComponentModel;
 using System.Data;
 using System.Linq;
@@ -20,6 +21,7 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     private object? DefaultValue { get; set; }
     private ColumnDefaultExpression? DefaultExpression { get; set; }
     private string? Description { get; set; }
+    private IReadOnlyDictionary<string, string> Annotations { get; set; } = ImmutableSortedDictionary<string, string>.Empty;
     private NativeDatabaseType? NativeType { get; set; }
     private NativeTypeFallback NativeTypeFallback { get; set; }
     private ColumnGeneration? Generation { get; set; }
@@ -128,6 +130,12 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
         return this;
     }
 
+    IColumnConstraintBuilder IColumnConstraintBuilder.WithAnnotations(IReadOnlyDictionary<string, string> annotations)
+    {
+        Annotations = annotations ?? throw new ArgumentNullException(nameof(annotations));
+        return this;
+    }
+
     IColumnConstraintBuilder IColumnConstraintBuilder.WithNativeType(NativeDatabaseType nativeType, NativeTypeFallback fallback)
     {
         NativeType = nativeType ?? throw new ArgumentNullException(nameof(nativeType));
@@ -148,15 +156,23 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
                 throw new InvalidOperationException("A structured type cannot be combined with a scalar type, scalar facets, or a native type override.");
             if (Generation is IdentityColumnGeneration || DefaultExpression is not null)
                 throw new InvalidOperationException("A structured type cannot use identity generation or a typed default expression.");
-            return new Column(Name, StructuredType, DefaultValue, constraints, Description, Generation as GeneratedColumnGeneration);
+            return new Column(Name, StructuredType, DefaultValue, constraints, Description, Generation as GeneratedColumnGeneration)
+            { Annotations = Annotations };
         }
 
         if (Scale.HasValue && Length.HasValue)
-            return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
+        {
+            return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
+            { Annotations = Annotations };
+        }
 
         if (Length.HasValue)
-            return new VarLengthColumn(Name, Type, Length.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
+        {
+            return new VarLengthColumn(Name, Type, Length.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
+            { Annotations = Annotations };
+        }
 
-        return new Column(Name, Type, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression);
+        return new Column(Name, Type, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
+        { Annotations = Annotations };
     }
 }

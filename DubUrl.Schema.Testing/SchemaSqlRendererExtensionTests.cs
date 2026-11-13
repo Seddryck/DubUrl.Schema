@@ -6,6 +6,7 @@ using DubUrl.Querying.Dialects.Functions;
 using DubUrl.Querying.Dialects.Renderers;
 using DubUrl.Querying.TypeMapping;
 using DubUrl.Schema.Renderers;
+using DubUrl.Schema.Builders;
 using DubUrl.Schema.Constraints;
 using NUnit.Framework;
 using ForeignKey = DubUrl.Schema.Constraints.ForeignKeyConstraint;
@@ -49,6 +50,45 @@ public class SchemaSqlRendererExtensionTests
         public IReadOnlyList<SchemaSqlCommand> PlanTableAnnotations(IDialect dialect, DatabaseObjectName table,
             IReadOnlyDictionary<string, string> annotations)
             => [new($"ANNOTATE {table.Name} {annotations["myapp.source"]};", SchemaSqlOperation.Comment, table.ToString())];
+    }
+
+    [Test]
+    public void ColumnAnnotationsArePlannedTogetherWithTheirTableAndCoexistWithComments()
+    {
+        var id = new ColumnBuilder().WithName("id").WithType(DbType.Int32)
+            .WithAnnotations(new Dictionary<string, string> { ["source"] = "erp" }).Build();
+        var value = new Column("value", DbType.Int32, description: "Value description")
+        {
+            Annotations = new Dictionary<string, string> { ["source"] = "api" }
+        };
+        var identity = new DatabaseObjectName("annotated", "sales");
+        var schema = new Schema([new Table(identity, [id, value, new("plain", DbType.Int32)])]);
+        var annotationsOnly = new Schema([new Table(identity, [id])]);
+        var unsupported = new SchemaScriptRenderer(new ProviderDialect(source, StandardSchemaSqlRenderer.Instance));
+        Assert.That(() => unsupported.Render(annotationsOnly), Throws.TypeOf<NotSupportedException>().With.Message.Contains("column annotations"));
+        Assert.That(() => unsupported.Plan(annotationsOnly), Throws.TypeOf<NotSupportedException>().With.Message.Contains("column annotations"));
+
+        var provider = new ColumnAnnotationRenderer();
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, provider));
+        var plan = renderer.Plan(schema);
+        Assert.That(plan.Select(command => command.Operation),
+            Is.EqualTo(new[] { SchemaSqlOperation.CreateTable, SchemaSqlOperation.Comment, SchemaSqlOperation.Comment }));
+        Assert.That(plan[1].CommandText, Is.EqualTo("ANNOTATE id=erp,value=api;"));
+        Assert.That(plan[1].ObjectName, Is.EqualTo(identity.ToString()));
+        Assert.That(plan[2].CommandText, Does.Contain("Value description"));
+        Assert.That(renderer.Render(schema), Does.Contain(plan[1].CommandText).And.Contain("Value description"));
+    }
+
+    private sealed class ColumnAnnotationRenderer : StandardSchemaSqlRenderer, IColumnAnnotationSqlRenderer
+    {
+        public override bool SupportsCommentRendering => true;
+
+        public IReadOnlyList<SchemaSqlCommand> PlanColumnAnnotations(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> annotations)
+        {
+            var pairs = annotations.Select(column => $"{column.Key}={column.Value["source"]}");
+            return [new($"ANNOTATE {string.Join(",", pairs)};", SchemaSqlOperation.Comment, table.ToString())];
+        }
     }
 
     [Test]

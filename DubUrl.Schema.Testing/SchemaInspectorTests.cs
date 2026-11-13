@@ -9,14 +9,17 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task Inspect_RequestsAnnotationsByDefaultOnlyWhenSupported(bool supported)
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public async Task Inspect_RequestsAnnotationsByDefaultOnlyWhenSupported(bool tableSupported, bool columnSupported)
     {
         var reader = new Mock<ISchemaMetadataReader>();
         reader.SetupGet(value => value.Capabilities).Returns(new Dictionary<SchemaFeature, MetadataCoverage>
         {
-            [SchemaFeature.Annotations] = supported ? MetadataCoverage.Available : MetadataCoverage.Unsupported,
+            [SchemaFeature.Annotations] = tableSupported ? MetadataCoverage.Available : MetadataCoverage.Unsupported,
+            [SchemaFeature.ColumnAnnotations] = columnSupported ? MetadataCoverage.Available : MetadataCoverage.Unsupported,
         });
         var connection = new Mock<System.Data.Common.DbConnection>();
         connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
@@ -27,26 +30,33 @@ public class SchemaInspectorTests
         var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object);
 
         Assert.That(result.IsComplete, Is.True);
-        Assert.That(result.Coverage.ContainsKey(SchemaFeature.Annotations), Is.EqualTo(supported));
+        Assert.That(result.Coverage.ContainsKey(SchemaFeature.Annotations), Is.EqualTo(tableSupported));
+        Assert.That(result.Coverage.ContainsKey(SchemaFeature.ColumnAnnotations), Is.EqualTo(columnSupported));
     }
 
     [Test]
-    public void Map_PreservesTableAnnotationsAsAnImmutableSnapshot()
+    public void Map_PreservesTableAndColumnAnnotationsAsImmutableSnapshots()
     {
         var annotations = new Dictionary<string, string> { ["myapp.Source"] = "ERP", ["myapp.source"] = "" };
-        var table = new MetadataTable(new("items"), [new("id", 1, DbType.Int32, false)]) { Annotations = annotations };
-        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Annotations];
+        var columnAnnotations = new Dictionary<string, string> { ["myapp.source"] = "customer" };
+        var column = new MetadataColumn("id", 1, DbType.Int32, false) { Comment = "Identifier", Annotations = columnAnnotations };
+        var table = new MetadataTable(new("items"), [column]) { Annotations = annotations };
+        SchemaFeature[] features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Annotations, SchemaFeature.ColumnAnnotations, SchemaFeature.Comments];
         var metadata = new SchemaMetadata([table], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []);
 
         var result = new SchemaInspector().Map(metadata, new() { Features = features });
         annotations.Clear();
+        columnAnnotations.Clear();
 
         Assert.That(result.IsComplete, Is.True);
-        Assert.That(result.Schema!.Tables.Values.Single().Annotations, Is.EquivalentTo(new Dictionary<string, string>
+        var mapped = result.Schema!.Tables.Values.Single();
+        Assert.That(mapped.Annotations, Is.EquivalentTo(new Dictionary<string, string>
         {
             ["myapp.Source"] = "ERP",
             ["myapp.source"] = "",
         }));
+        Assert.That(mapped.Columns["id"].Description, Is.EqualTo("Identifier"));
+        Assert.That(mapped.Columns["id"].Annotations["myapp.source"], Is.EqualTo("customer"));
     }
 
     [TestCase("complete", false)]
