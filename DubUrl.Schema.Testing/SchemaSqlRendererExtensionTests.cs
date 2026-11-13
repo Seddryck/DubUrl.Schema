@@ -390,9 +390,11 @@ public class SchemaSqlRendererExtensionTests
             "collision" => [new Index("existing", table.Name, [new("A")])],
             _ => []
         };
-        var dialect = failure == "unsupported" ? source : new ProviderDialect(source,
-            new UniquePlanningRenderer(failure != "blank clause", failure != "ineligible", failure == "mismatch",
-                failure == "collision" ? "existing" : null, failure == "blank clause" ? " " : null));
+        var provider = failure == "unsupported"
+            ? StandardSchemaSqlRenderer.Instance
+            : new UniquePlanningRenderer(failure != "blank clause", failure != "ineligible", failure == "mismatch",
+                failure == "collision" ? "existing" : null, failure == "blank clause" ? " " : null);
+        var dialect = new ProviderDialect(source, provider);
         var renderer = new SchemaScriptRenderer(dialect);
         var schema = new Schema([child, table], indexes);
         Assert.That(() => renderer.Plan(schema), Throws.TypeOf<NotSupportedException>().With.Message.Contains(message));
