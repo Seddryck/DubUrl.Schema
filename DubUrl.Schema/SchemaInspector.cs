@@ -101,13 +101,8 @@ public sealed class SchemaInspector
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
         IHierarchyMetadataReader? hierarchyMetadata)
     {
-        ArgumentNullException.ThrowIfNull(metadata);
-        options ??= new();
         var diagnostics = new List<DiscoveryDiagnostic>();
-        var coverage = options.Features.Concat(new[] { SchemaFeature.Tables, SchemaFeature.Columns }).Distinct().ToDictionary(feature => feature,
-            feature => metadata.Coverage.GetValueOrDefault(feature, MetadataCoverage.Unsupported));
-        foreach (var item in coverage.Where(item => item.Value is not (MetadataCoverage.Available or MetadataCoverage.Absent)))
-            diagnostics.Add(new("SDI003", item.Key, item.Value, "Requested metadata is not completely available."));
+        var coverage = GetRequestedCoverage(metadata, options, diagnostics);
         var selected = SelectTables(metadata, options, diagnostics);
         diagnostics.AddRange(metadata.Diagnostics.Where(item => coverage.ContainsKey(item.Feature) && (item.Object is null || selected.ContainsKey(item.Object))));
         var tables = new List<Table>();
@@ -139,6 +134,16 @@ public sealed class SchemaInspector
         }
         var views = MapViews(metadata, options, selected, diagnostics);
         return CompleteResult(metadata, options, diagnostics, coverage, tables, indexes, views, hierarchies);
+    }
+
+    private static Dictionary<SchemaFeature, MetadataCoverage> GetRequestedCoverage(SchemaMetadata metadata,
+        DiscoveryOptions options, List<DiscoveryDiagnostic> diagnostics)
+    {
+        var coverage = options.Features.Concat(new[] { SchemaFeature.Tables, SchemaFeature.Columns }).Distinct()
+            .ToDictionary(feature => feature, feature => metadata.Coverage.GetValueOrDefault(feature, MetadataCoverage.Unsupported));
+        foreach (var item in coverage.Where(item => item.Value is not (MetadataCoverage.Available or MetadataCoverage.Absent)))
+            diagnostics.Add(new("SDI003", item.Key, item.Value, "Requested metadata is not completely available."));
+        return coverage;
     }
 
     private static SchemaInspectionResult CompleteResult(SchemaMetadata metadata, DiscoveryOptions options,

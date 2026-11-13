@@ -277,8 +277,7 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         }
         else if (table.PrimaryKey?.Columns is not [var key] || key != hierarchy.NodeKey
             || !columns.TryGetValue(hierarchy.NodeKey, out var column)
-            || column.Nullable is true || column.StructuredType is not null
-            || (SchemaDocumentTypes.TryGetDbType(column.Type, out var type) && type == System.Data.DbType.Object && column.NativeType is null))
+            || !IsNonNullableScalar(column))
         {
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidHierarchy,
                 "The node key must be the table's single-column, non-nullable scalar primary key.", $"{path}.nodeKey"));
@@ -291,6 +290,12 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
                 "The parent column name must be nonblank and cannot contain NUL.", $"{path}.parentColumnName"));
         }
     }
+
+    private static bool IsNonNullableScalar(ColumnDocument column)
+        => column is { Nullable: not true, StructuredType: null }
+            && (column.NativeType is not null
+                || !SchemaDocumentTypes.TryGetDbType(column.Type, out var type)
+                || type != System.Data.DbType.Object);
 
     private static void ValidateUniqueConstraints(TableDocument table, string tablePath,
         IReadOnlyDictionary<string, ColumnDocument> columns, List<SchemaDocumentDiagnostic> diagnostics)
