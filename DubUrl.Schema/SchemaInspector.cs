@@ -8,6 +8,10 @@ public sealed record SchemaInspectionResult(Schema? Schema, bool IsComplete, boo
     IReadOnlyDictionary<SchemaFeature, MetadataCoverage> Coverage, IReadOnlyList<DiscoveryDiagnostic> Diagnostics)
 {
     public IReadOnlyList<MetadataView> ViewInventory { get; init; } = [];
+    /// <summary>Explicit declarations recovered alongside the physical schema.</summary>
+    /// <value>Table identities and their recorded logical hierarchy declarations.</value>
+    public IReadOnlyDictionary<DatabaseObjectName, Hierarchy> Hierarchies { get; init; }
+        = System.Collections.Immutable.ImmutableDictionary<DatabaseObjectName, Hierarchy>.Empty;
 }
 
 /// <summary>Maps provider-neutral metadata. No SQL is executed by this class.</summary>
@@ -64,7 +68,8 @@ public sealed class SchemaInspector
         catch (Exception exception) when (exception is DbException or InvalidOperationException or TimeoutException or NotSupportedException)
         { return Failure("SDI002", MetadataCoverage.Inaccessible, "Database metadata could not be accessed."); }
         cancellationToken.ThrowIfCancellationRequested();
-        return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns);
+        return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns,
+            reader as IHierarchyMetadataReader);
     }
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options = null, CancellationToken cancellationToken = default)
@@ -77,17 +82,24 @@ public sealed class SchemaInspector
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
+        => Map(metadata, options, cancellationToken, uniqueMetadata, structuredMetadata, null);
+
+    public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
+        IHierarchyMetadataReader? hierarchyMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         cancellationToken.ThrowIfCancellationRequested();
-        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata); }
+        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata); }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
         { return Failure("SDI007", MetadataCoverage.Unrepresentable, "Metadata could not be mapped into a valid schema."); }
     }
 
     private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
-        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
+        IHierarchyMetadataReader? hierarchyMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         options ??= new();
@@ -100,6 +112,7 @@ public sealed class SchemaInspector
         diagnostics.AddRange(metadata.Diagnostics.Where(item => coverage.ContainsKey(item.Feature) && (item.Object is null || selected.ContainsKey(item.Object))));
         var tables = new List<Table>();
         var indexes = new List<Index>();
+        var hierarchies = new Dictionary<DatabaseObjectName, Hierarchy>();
         foreach (var table in selected.Values.OrderBy(table => Name(table.Identity).Key, StringComparer.Ordinal))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -115,6 +128,8 @@ public sealed class SchemaInspector
                 }
                 tables.Add(mapped);
                 indexes.AddRange(MapIndexes(table, unique, diagnostics));
+                if (hierarchyMetadata?.GetHierarchy(table) is { } declaration)
+                    hierarchies.Add(mapped.Identity, declaration);
             }
             catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
             {
@@ -123,19 +138,23 @@ public sealed class SchemaInspector
             }
         }
         var views = MapViews(metadata, options, selected, diagnostics);
-        return CompleteResult(metadata, options, diagnostics, coverage, tables, indexes, views);
+        return CompleteResult(metadata, options, diagnostics, coverage, tables, indexes, views, hierarchies);
     }
 
     private static SchemaInspectionResult CompleteResult(SchemaMetadata metadata, DiscoveryOptions options,
         List<DiscoveryDiagnostic> diagnostics, Dictionary<SchemaFeature, MetadataCoverage> coverage,
-        List<Table> tables, List<Index> indexes, List<View> views)
+        List<Table> tables, List<Index> indexes, List<View> views, Dictionary<DatabaseObjectName, Hierarchy> hierarchies)
     {
         try
         {
             var schema = new Schema(tables.ToArray(), indexes.ToArray(), views.ToArray());
             ApplyDiagnosticCoverage(coverage, diagnostics);
             var complete = diagnostics.Count == 0;
-            return new(schema, complete, complete || options.AllowPartial, coverage, diagnostics) { ViewInventory = metadata.Views.Where(view => options.Tables.Count == 0 && MatchesScope(options, view.Identity)).ToArray() };
+            return new(schema, complete, complete || options.AllowPartial, coverage, diagnostics)
+            {
+                ViewInventory = metadata.Views.Where(view => options.Tables.Count == 0 && MatchesScope(options, view.Identity)).ToArray(),
+                Hierarchies = new System.Collections.ObjectModel.ReadOnlyDictionary<DatabaseObjectName, Hierarchy>(hierarchies)
+            };
         }
         catch (ArgumentException)
         {

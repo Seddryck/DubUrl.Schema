@@ -16,7 +16,8 @@ internal static class SqlExpressionRenderer
             ColumnExpression column => dialect.SchemaSqlRenderer.RenderIdentifier(dialect, column.Column.Name),
             FunctionExpression function =>
                 $"{ResolveFunction(function.Function, dialect.SqlFunctionMapper)}({string.Join(", ", function.Expressions.Select(item => Render(item, dialect)))})",
-            _ => throw new ArgumentException(
+            _ => (dialect.SchemaSqlRenderer as IHierarchySqlRenderer)?.RenderHierarchyExpression(dialect, expression)
+                ?? throw new ArgumentException(
                 $"Expression type '{expression.GetType().Name}' is not supported for SQL rendering.",
                 nameof(expression))
         };

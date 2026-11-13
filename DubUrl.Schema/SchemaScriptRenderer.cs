@@ -18,7 +18,8 @@ public class SchemaScriptRenderer
     private RendererEngine[] Templates { get; } = [];
     private IDialect Dialect { get; }
     private NativeTypeRegistry NativeTypes { get; }
-    private bool DropExisting { get; }
+    private SchemaCreationOptions Options { get; }
+    private bool DropExisting => Options == SchemaCreationOptions.DropIfExists;
     /// <summary>Whether descriptions can be rendered by this implementation.</summary>
     /// <value>
     /// Whether descriptions can be rendered by this implementation.
@@ -29,7 +30,7 @@ public class SchemaScriptRenderer
     public SchemaScriptRenderer(IDialect dialect, SchemaCreationOptions options = SchemaCreationOptions.None, NativeTypeRegistry? nativeTypes = null)
     {
         Dialect = dialect;
-        DropExisting = options == SchemaCreationOptions.DropIfExists;
+        Options = options;
         NativeTypes = nativeTypes ?? NativeTypeRegistry.Default;
         SupportsComments = CommentRenderer.Supports(dialect) || dialect.SchemaSqlRenderer is ITableDescriptionSqlRenderer;
         var templates = new List<RendererEngine>();
@@ -50,11 +51,16 @@ public class SchemaScriptRenderer
         Templates = [.. templates];
     }
 
+    /// <summary>Reports hierarchy storage and enforcement for this renderer's dialect and options without generating DDL.</summary>
+    public IReadOnlyList<HierarchyPlan> PreflightHierarchies(Schema schema)
+        => Array.AsReadOnly(HierarchyPlanning.Plan(schema, Dialect, Options, NativeTypes).Select(plan => plan.Report).ToArray());
+
     public virtual string Render(Schema schema)
     {
         if (Dialect.SchemaSqlRenderer is ISchemaCommandSqlRenderer || schema.Tables.Values.Any(table => table.Annotations.Count > 0))
             return string.Join(Environment.NewLine, Plan(schema).Select(command => command.CommandText.TrimEnd()));
 
+        schema = HierarchyPlanning.Expand(schema, Dialect, Options, NativeTypes);
         var tables = PrepareTables(schema);
         var indexes = CreateIndexModels(schema);
         var orderedViews = ViewDependencyPlanner.Order(schema.Views.Values)
@@ -81,7 +87,7 @@ public class SchemaScriptRenderer
     /// <remarks>Text export remains available through Render; this path never parses exported SQL.</remarks>
     public virtual IReadOnlyList<SchemaSqlCommand> Plan(Schema schema)
     {
-        ArgumentNullException.ThrowIfNull(schema);
+        schema = HierarchyPlanning.Expand(schema, Dialect, Options, NativeTypes);
         var commands = new List<SchemaSqlCommand>();
         var tables = PrepareTables(schema, commands);
         var indexes = CreateIndexModels(schema);

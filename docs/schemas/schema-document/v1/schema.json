@@ -74,6 +74,7 @@
           "minItems": 1
         },
         "primaryKey": { "description": "The canonical table-level primary key.", "$ref": "#/$defs/primaryKey" },
+        "hierarchy": { "description": "An optional hierarchy declared over the table's node key.", "$ref": "#/$defs/hierarchy" },
         "uniqueConstraints": {
           "description": "Named or unnamed UNIQUE tuples in declaration order.",
           "type": "array",
@@ -92,6 +93,17 @@
           "items": { "$ref": "#/$defs/foreignKey" },
           "default": []
         }
+      }
+    },
+    "hierarchy": {
+      "description": "A table hierarchy whose physical storage is selected by the target provider.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodeKey"],
+      "properties": {
+        "nodeKey": { "description": "The table's single-column scalar primary key.", "type": "string", "minLength": 1 },
+        "parentColumnName": { "description": "The generated column name for parent-reference storage.", "type": "string", "minLength": 1, "default": "parent_id" },
+        "requireParentExists": { "description": "Whether to require database enforcement of parent existence.", "type": "boolean", "default": true }
       }
     },
     "column": {
