@@ -258,10 +258,44 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
         }
 
         ValidatePrimaryKey(table.PrimaryKey, tablePath, columnLookup, diagnostics);
+        ValidateHierarchy(table, tablePath, columnLookup, diagnostics);
         ValidateUniqueConstraints(table, tablePath, columnLookup, diagnostics);
         ValidateChecks(table.Checks ?? [], $"{tablePath}.checks", columns, diagnostics);
         ValidateForeignKeys(table.ForeignKeys ?? [], tablePath, columnLookup, tables, diagnostics);
     }
+
+    private static void ValidateHierarchy(TableDocument table, string tablePath,
+        IReadOnlyDictionary<string, ColumnDocument> columns, List<SchemaDocumentDiagnostic> diagnostics)
+    {
+        if (table.Hierarchy is not { } hierarchy) return;
+
+        var path = $"{tablePath}.hierarchy";
+        if (string.IsNullOrWhiteSpace(hierarchy.NodeKey) || hierarchy.NodeKey.Contains('\0'))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidHierarchy,
+                "A hierarchy requires a nonblank node key without NUL.", $"{path}.nodeKey"));
+        }
+        else if (table.PrimaryKey?.Columns is not [var key] || key != hierarchy.NodeKey
+            || !columns.TryGetValue(hierarchy.NodeKey, out var column)
+            || !IsNonNullableScalar(column))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidHierarchy,
+                "The node key must be the table's single-column, non-nullable scalar primary key.", $"{path}.nodeKey"));
+        }
+
+        var parentName = hierarchy.ParentColumnName ?? "parent_id";
+        if (string.IsNullOrWhiteSpace(parentName) || parentName.Contains('\0'))
+        {
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidHierarchy,
+                "The parent column name must be nonblank and cannot contain NUL.", $"{path}.parentColumnName"));
+        }
+    }
+
+    private static bool IsNonNullableScalar(ColumnDocument column)
+        => column is { Nullable: not true, StructuredType: null }
+            && (column.NativeType is not null
+                || !SchemaDocumentTypes.TryGetDbType(column.Type, out var type)
+                || type != System.Data.DbType.Object);
 
     private static void ValidateUniqueConstraints(TableDocument table, string tablePath,
         IReadOnlyDictionary<string, ColumnDocument> columns, List<SchemaDocumentDiagnostic> diagnostics)

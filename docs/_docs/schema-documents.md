@@ -43,6 +43,19 @@ string-fixed-length, time, uint16, uint32, uint64, varnumeric, xml
 
 Typed literal values use invariant string representations. Binary values are Base64; dates and date-times use round-trip parsing; `null` omits `value`. A column default's literal type must match the column logical type.
 
+### Table hierarchies
+
+Declare a hierarchy alongside the table's primary key. For example, a table whose sole primary key is `id` can use the following declaration.
+
+```yaml
+hierarchy:
+  nodeKey: id
+  parentColumnName: parent_id
+  requireParentExists: true
+```
+
+`nodeKey` must name a non-nullable scalar column that forms the entire primary key. `parentColumnName` defaults to `parent_id` and applies when the provider stores a parent reference. A null parent identifies a root, and multiple roots are allowed. `requireParentExists` defaults to true. Set it to false to allow storage when enforcement cannot be confirmed for the target. Foreign keys check parent existence and allow cycles.
+
 ### Structured columns
 
 A v1 column can declare `structuredType` with a recursive `shape` and an explicit `storage`. Existing `type` and `nativeType` declarations retain their v1 behavior. A structured column cannot also specify a scalar type, native override, scalar facets, identity generation, or an expression default. Its only supported literal default is SQL NULL on a nullable column.

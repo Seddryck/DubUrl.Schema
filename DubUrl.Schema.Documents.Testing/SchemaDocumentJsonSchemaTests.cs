@@ -24,6 +24,7 @@ public class SchemaDocumentJsonSchemaTests
         [typeof(SchemaDocument)] = null,
         [typeof(DatabaseObjectNameDocument)] = "databaseObjectName",
         [typeof(TableDocument)] = "table",
+        [typeof(HierarchyDocument)] = "hierarchy",
         [typeof(ColumnDocument)] = "column",
         [typeof(StructuredColumnTypeDocument)] = "structuredColumnType",
         [typeof(StructuredTypeDocument)] = "structuredType",

@@ -4,6 +4,19 @@ Provider-neutral database schema models, fluent builders, SQL rendering, discove
 
 The user documentation is published as part of the [single DubUrl website](https://seddryck.github.io/DubUrl/docs/schemas/).
 
+## Table hierarchies
+
+Use `WithHierarchy(new Hierarchy("id"))` on a table builder with a single-column scalar primary key. In schema documents, set `hierarchy: { nodeKey: id }` on the table. The declaration requires database enforcement of parent existence by default.
+
+```csharp
+var renderer = new SchemaScriptRenderer(dialect);
+var hierarchies = renderer.PreflightHierarchies(schema);
+```
+
+Preflight reports each table's representation, enforcement, and any diagnostic. It uses the renderer's dialect and options without connecting to a database. A plan with `IsSupported` set to false prevents DDL generation.
+
+DuckDB generates a nullable `parent_id` with the node key's type and a self-referencing foreign key in `CREATE TABLE`. Each row with a null parent is a root. The foreign key checks that parents exist and permits cycles. Insert a parent before any statement that inserts a child referencing it. Set `requireParentExists` to false to allow storage without enforcement on a target where enforcement is unavailable.
+
 ## Build and test
 
 ```powershell

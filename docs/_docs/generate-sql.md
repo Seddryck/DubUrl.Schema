@@ -75,6 +75,12 @@ Provider capabilities still apply. The renderer throws when the selected dialect
 
 For a portable JSON or YAML representation of the same model, see [Schema documents]({{ site.baseurl }}/schema-documents/).
 
+## Preview hierarchy storage
+
+Call `renderer.PreflightHierarchies(schema)` on the same `SchemaScriptRenderer` you will use to generate DDL. With a connection URL, call `connectionUrl.PreflightHierarchies(schema, options)`. The result for each table includes the selected representation, whether the target enforces parent existence, and a diagnostic for unsupported declarations. Preflight uses the target settings supplied to the renderer without opening a connection.
+
+DuckDB generates `parent_id` with the node key's type and a self-referencing foreign key inside `CREATE TABLE`. PostgreSQL renders the foreign key in a separate command. SQLite and MySQL can declare the foreign key, but enforcement depends on connection or storage settings. Without confirmation from the provider, the declaration must explicitly allow storage without guaranteed enforcement.
+
 ## Safe column and constraint rendering
 
 SQL Server and Teradata character columns require explicit dimensions. Use `new VarLengthColumn("name", DbType.String, 120)` (or `.WithLength(120)`) for bounded strings. For intentional unbounded SQL Server text, use `VarLengthColumn.Unbounded` (`-1`), which renders `NVARCHAR(MAX)` or `VARCHAR(MAX)`. Fixed-width strings and key columns cannot use `MAX`. Teradata requires bounded `VARCHAR`/`CHAR`; an explicitly selected native `CLOB` is available for large non-key text. No default business length is guessed. Native types and logical fallbacks follow the same dimension policy.

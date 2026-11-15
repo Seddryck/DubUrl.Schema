@@ -64,7 +64,10 @@ public sealed class SchemaDocumentExporter
             Identity = Name(table.Identity),
             Description = table.Description,
             Annotations = new Dictionary<string, string>(table.Annotations, StringComparer.Ordinal),
-            Columns = table.Columns.Values.Select(Column).ToList()
+            Columns = table.Columns.Values.Select(Column).ToList(),
+            Hierarchy = table.Hierarchy is { } hierarchy
+                ? new() { NodeKey = hierarchy.NodeKey, ParentColumnName = hierarchy.ParentColumnName, RequireParentExists = hierarchy.RequireParentExists }
+                : null
         };
         foreach (var constraint in table.Constraints)
         {

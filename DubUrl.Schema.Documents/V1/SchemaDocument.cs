@@ -25,9 +25,17 @@ public sealed class TableDocument
     public Dictionary<string, string>? Annotations { get; set; }
     public List<ColumnDocument> Columns { get; set; } = [];
     public PrimaryKeyDocument? PrimaryKey { get; set; }
+    public HierarchyDocument? Hierarchy { get; set; }
     public List<UniqueConstraintDocument> UniqueConstraints { get; set; } = [];
     public List<CheckDocument> Checks { get; set; } = [];
     public List<ForeignKeyDocument> ForeignKeys { get; set; } = [];
+}
+
+public sealed class HierarchyDocument
+{
+    public string? NodeKey { get; set; }
+    public string? ParentColumnName { get; set; }
+    public bool? RequireParentExists { get; set; }
 }
 
 public sealed class ColumnDocument

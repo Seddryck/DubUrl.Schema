@@ -22,5 +22,7 @@ public interface ITableBuilder
     ITableBuilder WithPhysicalOptions(DubUrl.Querying.Dialects.TablePhysicalOptions options);
     ITableBuilder WithAnnotations(IReadOnlyDictionary<string, string> annotations)
         => throw new NotSupportedException("This table builder does not support annotations.");
+    ITableBuilder WithHierarchy(Hierarchy hierarchy)
+        => throw new NotSupportedException("This table builder does not support hierarchies.");
     Table Build();
 }
