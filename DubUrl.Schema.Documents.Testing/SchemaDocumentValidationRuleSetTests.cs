@@ -141,6 +141,25 @@ public class SchemaDocumentValidationRuleSetTests
             Throws.ArgumentException.With.Message.Contains(SchemaDocumentValidationRuleIds.Columns.LogicalType));
     }
 
+    [TestCase("unknown", null, null, SchemaDocumentDiagnosticCodes.InvalidGeneration, ".identity.mode")]
+    [TestCase("provider-defaults", 5L, null, SchemaDocumentDiagnosticCodes.MutuallyExclusive, ".identity")]
+    [TestCase("provider-defaults", null, 2L, SchemaDocumentDiagnosticCodes.MutuallyExclusive, ".identity")]
+    public void Validate_RejectsInvalidProviderIdentitySettings(string mode, long? seed, long? increment,
+        string expectedCode, string pathSuffix)
+    {
+        var document = CreateDocument();
+        document.Tables[0].Columns[0].Identity = new IdentityColumnDocument
+        {
+            Mode = mode,
+            DeclaredSeed = seed,
+            DeclaredIncrement = increment
+        };
+
+        var diagnostic = new SchemaDocumentValidator().Validate(document).Single();
+        Assert.That(diagnostic.Code, Is.EqualTo(expectedCode));
+        Assert.That(diagnostic.Path, Is.EqualTo($"tables[0].columns[0]{pathSuffix}"));
+    }
+
     [Test]
     public void Validate_DefaultRulesPreserveDiagnosticOrder()
     {

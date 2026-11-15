@@ -224,32 +224,36 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             var column = context.Column;
-            if (column.Identity is { } identity)
-            {
-                if (identity.Mode is not (null or "provider-defaults"))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
-                        "Identity mode must be 'provider-defaults' when specified.", $"{context.Path}.identity.mode"));
-                }
-                if (identity.Mode == "provider-defaults"
-                    && (identity.DeclaredSeed is not null || identity.DeclaredIncrement is not null))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
-                        "Provider-default identity cannot declare a seed or increment.", $"{context.Path}.identity"));
-                }
-                if (identity.DeclaredIncrement == 0)
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
-                        "Identity increment cannot be zero.", $"{context.Path}.identity.increment"));
-                }
+            if (column.Identity is not { } identity) return;
 
-                if (SchemaDocumentTypes.TryGetDbType(column.Type, out var type)
-                    && !SchemaDocumentTypes.SupportsIdentity(type))
-                {
-                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
-                        $"Logical type '{column.Type}' cannot be used for an identity column.",
-                        $"{context.Path}.identity"));
-                }
+            var path = $"{context.Path}.identity";
+            ValidateSettings(identity, path, diagnostics);
+            if (SchemaDocumentTypes.TryGetDbType(column.Type, out var type)
+                && !SchemaDocumentTypes.SupportsIdentity(type))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                    $"Logical type '{column.Type}' cannot be used for an identity column.", path));
+            }
+        }
+
+        private static void ValidateSettings(IdentityColumnDocument identity, string path,
+            ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            if (identity.Mode is not (null or "provider-defaults"))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
+                    "Identity mode must be 'provider-defaults' when specified.", $"{path}.mode"));
+            }
+            if (identity.Mode == "provider-defaults" &&
+                (identity.DeclaredSeed is not null || identity.DeclaredIncrement is not null))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
+                    "Provider-default identity cannot declare a seed or increment.", path));
+            }
+            if (identity.DeclaredIncrement == 0)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
+                    "Identity increment cannot be zero.", $"{path}.increment"));
             }
         }
     }
