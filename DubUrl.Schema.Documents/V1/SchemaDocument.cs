@@ -46,6 +46,7 @@ public sealed class ColumnDocument
     public int? Length { get; set; }
     public byte? Precision { get; set; }
     public byte? Scale { get; set; }
+    public int? FractionalSecondsPrecision { get; set; }
     public bool? Nullable { get; set; }
     public bool? Unique { get; set; }
     public LiteralDocument? Default { get; set; }
@@ -102,8 +103,23 @@ public sealed class NativeTypeDocument
 
 public sealed class IdentityColumnDocument
 {
-    public long Seed { get; set; } = 1;
-    public long Increment { get; set; } = 1;
+    public string? Mode { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    [YamlDotNet.Serialization.YamlIgnore]
+    public long Seed { get => DeclaredSeed ?? 1; set => DeclaredSeed = value; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    [YamlDotNet.Serialization.YamlIgnore]
+    public long Increment { get => DeclaredIncrement ?? 1; set => DeclaredIncrement = value; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("seed")]
+    [YamlDotNet.Serialization.YamlMember(Alias = "seed")]
+    public long? DeclaredSeed { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("increment")]
+    [YamlDotNet.Serialization.YamlMember(Alias = "increment")]
+    public long? DeclaredIncrement { get; set; }
 }
 
 public sealed class GeneratedColumnDocument

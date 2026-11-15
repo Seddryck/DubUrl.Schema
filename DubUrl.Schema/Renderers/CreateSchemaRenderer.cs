@@ -90,6 +90,13 @@ public class CreateSchemaRenderer : RendererEngine
     {
         if (value is not ColumnViewModel column)
             throw new ArgumentException("The column type formatter requires a column view model.", nameof(value));
+        if (column.Source.FractionalSecondsPrecision is { } precision)
+        {
+            var type = (dialect.SchemaSqlRenderer as ITemporalColumnSqlRenderer)
+                ?.RenderTemporalColumnType(dialect, column.Source.Type, precision);
+            return type ?? throw new NotSupportedException(
+                $"Dialect '{dialect.GetType().Name}' cannot render {column.Type} with fractional seconds precision {precision}.");
+        }
         if (column.Source.StructuredType is not null)
             return column.PlannedStructuredType ?? throw new NotSupportedException("A structured type requires a table-aware provider plan.");
         if (column.NativeType is null)
@@ -115,7 +122,7 @@ public class CreateSchemaRenderer : RendererEngine
     internal static string ResolveColumnType(ColumnViewModel column, IDialect dialect, NativeTypeRegistry nativeTypes)
     {
         var type = RenderColumnType(column, dialect, nativeTypes);
-        if (column.Source.StructuredType is null)
+        if (column.Source.StructuredType is null && column.Source.FractionalSecondsPrecision is null)
         {
             type = dialect.SchemaSqlRenderer.RenderColumnType(dialect, type, column.DeclaredLength,
                 column.Precision, column.Scale,
@@ -152,6 +159,8 @@ public class CreateSchemaRenderer : RendererEngine
         => column.Generation switch
         {
             null => type,
+            ProviderDefaultIdentityColumnGeneration when dialect.SchemaSqlRenderer is IProviderDefaultIdentitySqlRenderer identity =>
+                identity.RenderProviderDefaultIdentity(dialect, type),
             IdentityColumnGeneration when dialect.SchemaSqlRenderer is ISequenceIdentitySqlRenderer sequence =>
                 sequence.RenderIdentityColumn(dialect, IdentityContext(column), type),
             IdentityColumnGeneration identity => dialect.SchemaSqlRenderer.RenderIdentity(

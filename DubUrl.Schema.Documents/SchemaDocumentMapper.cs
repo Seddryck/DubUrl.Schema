@@ -108,7 +108,8 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
                 constraints, document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations },
             _ => new Column(
                 document.Name!, type, defaultValue, constraints, document.Description,
-                nativeType, fallback, generation, defaultExpression) { Annotations = annotations }
+                nativeType, fallback, generation, defaultExpression)
+            { Annotations = annotations, FractionalSecondsPrecision = document.FractionalSecondsPrecision }
         };
     }
 
@@ -126,8 +127,11 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
 
     private ColumnGeneration? MapGeneration(ColumnDocument document)
     {
-        if (document.Identity is not null)
-            return new IdentityColumnGeneration(document.Identity.Seed, document.Identity.Increment);
+        if (document.Identity is { } identity)
+        {
+            return identity.Mode == "provider-defaults" ? new ProviderDefaultIdentityColumnGeneration()
+                : new IdentityColumnGeneration(identity.Seed, identity.Increment);
+        }
         if (document.Generated is not null)
         {
             return new GeneratedColumnGeneration(

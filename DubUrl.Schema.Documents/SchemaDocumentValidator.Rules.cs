@@ -10,6 +10,7 @@ public sealed partial class SchemaDocumentValidator
                 new ColumnLogicalTypeRule(),
                 new ColumnLengthRule(),
                 new ColumnPrecisionScaleRule(),
+                new ColumnFractionalSecondsPrecisionRule(),
                 new ColumnShapeExclusivityRule(),
                 new ColumnGenerationExclusivityRule(),
                 new ColumnIdentityRule(),
@@ -142,6 +143,30 @@ public sealed partial class SchemaDocumentValidator
         }
     }
 
+    private sealed class ColumnFractionalSecondsPrecisionRule : IValidationRule<ColumnValidationContext>
+    {
+        public string Id => SchemaDocumentValidationRuleIds.Columns.FractionalSecondsPrecision;
+
+        public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            var column = context.Column;
+            if (column.FractionalSecondsPrecision is not { } precision) return;
+
+            var path = $"{context.Path}.fractionalSecondsPrecision";
+            if (precision is < 0 or > 9)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidFacet,
+                    "Fractional seconds precision must be between 0 and 9.", path));
+            }
+            if (column.NativeType is not null
+                || (SchemaDocumentTypes.TryGetDbType(column.Type, out var type) && !Column.SupportsFractionalSecondsPrecision(type)))
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.IncompatibleFacet,
+                    "Fractional seconds precision requires a logical time or timestamp type without a native override.", path));
+            }
+        }
+    }
+
     private sealed class ColumnShapeExclusivityRule : IValidationRule<ColumnValidationContext>
     {
         public string Id => SchemaDocumentValidationRuleIds.Columns.ShapeExclusivity;
@@ -199,9 +224,20 @@ public sealed partial class SchemaDocumentValidator
         public void Validate(ColumnValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
             var column = context.Column;
-            if (column.Identity is not null)
+            if (column.Identity is { } identity)
             {
-                if (column.Identity.Increment == 0)
+                if (identity.Mode is not (null or "provider-defaults"))
+                {
+                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
+                        "Identity mode must be 'provider-defaults' when specified.", $"{context.Path}.identity.mode"));
+                }
+                if (identity.Mode == "provider-defaults"
+                    && (identity.DeclaredSeed is not null || identity.DeclaredIncrement is not null))
+                {
+                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
+                        "Provider-default identity cannot declare a seed or increment.", $"{context.Path}.identity"));
+                }
+                if (identity.Increment == 0)
                 {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
                         "Identity increment cannot be zero.", $"{context.Path}.identity.increment"));

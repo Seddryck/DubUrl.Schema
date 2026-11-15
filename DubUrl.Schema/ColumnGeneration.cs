@@ -20,6 +20,10 @@ public sealed class IdentityColumnGeneration : ColumnGeneration
     }
 }
 
+/// <summary>Identity generation with seed and increment governed by the provider.</summary>
+public sealed class ProviderDefaultIdentityColumnGeneration : ColumnGeneration
+{ }
+
 public enum GeneratedColumnStorage
 {
     Virtual,

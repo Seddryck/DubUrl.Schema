@@ -190,6 +190,7 @@ public static class SchemaDocumentValidationRuleIds
 {
     public static class Columns
     {
+        public const string FractionalSecondsPrecision = "column.fractional-seconds-precision";
         public const string LogicalType = "column.logical-type";
         public const string Length = "column.length";
         public const string PrecisionScale = "column.precision-scale";
