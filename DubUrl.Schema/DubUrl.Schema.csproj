@@ -14,7 +14,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<PackageReference Include="DubUrl" Version="$(DubUrlVersion)" />
+		<PackageReference Include="DubUrl" Version="$(DubUrlCoreVersion)" />
 	</ItemGroup>
 
 	<ItemGroup>

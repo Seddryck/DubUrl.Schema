@@ -35,6 +35,7 @@ public class ColumnViewModel
     public Constraint? Unique { get; internal set; }
     public PrimaryKeyConstraintViewModel? PrimaryKey { get; internal set; }
     public CheckConstraint[] Checks { get; }
+    public PredicateCheckConstraint[] PredicateChecks { get; }
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }
 
@@ -72,6 +73,7 @@ public class ColumnViewModel
         Unique = GetUniqueness(column, includePrimaryKey, suppressUnique, columnPrimaryKey);
         PrimaryKey = CreatePrimaryKey(includePrimaryKey, columnPrimaryKey);
         Checks = [.. column.Constraints.OfType<CheckConstraint>()];
+        PredicateChecks = [.. column.Constraints.OfType<PredicateCheckConstraint>()];
         MembershipChecks = [.. column.Constraints.OfType<MembershipCheckConstraint>()];
         RegexChecks = [.. column.Constraints.OfType<RegexCheckConstraint>()];
         IsKey = columnPrimaryKey is not null || Unique is not null;

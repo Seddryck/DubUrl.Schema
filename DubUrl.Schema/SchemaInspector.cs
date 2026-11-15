@@ -52,6 +52,9 @@ public sealed class SchemaInspector
             if (annotations.Length > 0)
                 options = options with { Features = [.. options.Features, .. annotations] };
         }
+        if (options.Features.Contains(SchemaFeature.Checks) && !options.IncludeCheckPredicates)
+            options = options with { IncludeCheckPredicates = true };
+
         cancellationToken.ThrowIfCancellationRequested();
         if (borrowed.State != System.Data.ConnectionState.Open)
             throw new ArgumentException("A borrowed connection must already be open.", nameof(borrowed));
@@ -227,6 +230,8 @@ public sealed class SchemaInspector
         constraints.AddRange(MapForeignKeys(table, selected, diagnostics));
         constraints.AddRange(table.Checks.OrderBy(check => check.Name, StringComparer.Ordinal).Select(check => new CheckConstraint(
             Expression(check.Left), check.Operator, Expression(check.Right), check.Name)));
+        constraints.AddRange(table.CheckPredicates.OrderBy(check => check.Name, StringComparer.Ordinal)
+            .Select(check => new PredicateCheckConstraint(check.Expression, check.Name)));
         constraints.AddRange(uniqueKeys.Select(unique => new UniquenessConstraint(
             unique.Key.Columns.Select(name => byName[name]).ToArray(),
             unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));

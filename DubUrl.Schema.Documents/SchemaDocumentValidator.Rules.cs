@@ -35,6 +35,7 @@ public sealed partial class SchemaDocumentValidator
             [
                 new CheckKindRule(),
                 new ComparisonCheckRule(),
+                new TypedPredicateCheckRule(),
                 new MembershipCheckRule(),
                 new RegexCheckRule()
             ],
@@ -641,10 +642,43 @@ public sealed partial class SchemaDocumentValidator
 
         public void Validate(CheckValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
         {
-            if (context.Check.Kind is not ("comparison" or "membership" or "regex"))
+            if (context.Check.Kind is not ("comparison" or "predicate" or "membership" or "regex"))
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
-                    "Check kind must be 'comparison', 'membership', or 'regex'.", $"{context.Path}.kind"));
+                    "Check kind must be 'comparison', 'predicate', 'membership', or 'regex'.", $"{context.Path}.kind"));
+            }
+        }
+    }
+
+    private sealed class TypedPredicateCheckRule : IValidationRule<CheckValidationContext>
+    {
+        public string Id => SchemaDocumentValidationRuleIds.Checks.Predicate;
+
+        public void Validate(CheckValidationContext context, ICollection<SchemaDocumentDiagnostic> diagnostics)
+        {
+            var check = context.Check;
+            if (check.Kind != "predicate")
+            {
+                if (check.Predicate is not null)
+                {
+                    diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
+                        "Only predicate checks can declare a predicate.", $"{context.Path}.predicate"));
+                }
+                return;
+            }
+
+            if (check.Left is not null || check.Right is not null || check.Operator is not null
+                || check.Expression is not null || check.Values is { Count: > 0 }
+                || check.NullBehavior is not null || check.Pattern is not null)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
+                    "A predicate check must contain only a predicate and an optional name.", context.Path));
+            }
+
+            try { CheckPredicateMapping.Map(check.Predicate, context.Columns); }
+            catch (FormatException exception)
+            {
+                diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck, exception.Message, $"{context.Path}.predicate"));
             }
         }
     }

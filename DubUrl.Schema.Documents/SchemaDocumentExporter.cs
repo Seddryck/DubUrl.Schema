@@ -91,7 +91,7 @@ public sealed class SchemaDocumentExporter
                         TargetTable = Name(fk.TargetTable),
                         TargetColumns = fk.TargetColumns.ToList()
                     }); break;
-                case CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint:
+                case CheckConstraint or PredicateCheckConstraint or MembershipCheckConstraint or RegexCheckConstraint:
                     result.Checks.Add(Check(constraint)); break;
                 default: throw new NotSupportedException("Unsupported table constraint.");
             }
@@ -222,7 +222,7 @@ public sealed class SchemaDocumentExporter
                 case NullableConstraint or NotNullableConstraint or PrimaryKeyConstraint: break;
                 case UniquenessConstraint { Name: null }: result.Unique = true; break;
                 case UniquenessConstraint: break;
-                case CheckConstraint or MembershipCheckConstraint or RegexCheckConstraint: result.Checks.Add(Check(constraint)); break;
+                case CheckConstraint or PredicateCheckConstraint or MembershipCheckConstraint or RegexCheckConstraint: result.Checks.Add(Check(constraint)); break;
                 default: throw new NotSupportedException("Unsupported column constraint.");
             }
         }
@@ -237,6 +237,12 @@ public sealed class SchemaDocumentExporter
             Left = Expression(check.Left),
             Operator = check.Operator,
             Right = Expression(check.Right)
+        },
+        PredicateCheckConstraint check => new()
+        {
+            Name = check.Name,
+            Kind = "predicate",
+            Predicate = CheckPredicateMapping.Export(check.Predicate)
         },
         MembershipCheckConstraint membership => new()
         {

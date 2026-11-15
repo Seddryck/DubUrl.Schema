@@ -149,6 +149,7 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
         {
             "comparison" => new CheckConstraint(
                 MapExpression(document.Left!), document.Operator!, MapExpression(document.Right!), document.Name),
+            "predicate" => new PredicateCheckConstraint(CheckPredicateMapping.Map(document.Predicate), document.Name),
             "membership" => new MembershipCheckConstraint(
                 MapPredicateExpression(document.Expression!),
                 document.Values.Select(ConvertLiteral),

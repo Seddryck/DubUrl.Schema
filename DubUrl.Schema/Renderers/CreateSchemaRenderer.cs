@@ -37,6 +37,7 @@ public class CreateSchemaRenderer : RendererEngine
             ? renderer.RenderTableOptions(dialect, table.Columns.Any(column => column.HasDefault)) : "");
         AddFormatter("columncomment", value => dialect.SchemaSqlRenderer.RenderColumnComment(dialect, (string)value!));
         AddFormatter("check", value => RenderCheck(value, dialect));
+        AddFormatter("predicatecheck", value => RenderPredicateCheck((PredicateCheckConstraint)value!, dialect));
         AddFormatter("membership", value => RenderMembership(value, dialect));
         AddFormatter("regex", value => RenderRegex(value, dialect));
         AddFormatter("columntype", value => RenderColumnType(value, dialect, nativeTypes));
@@ -70,17 +71,21 @@ public class CreateSchemaRenderer : RendererEngine
         return $"{RenderExpression(constraint.Left, dialect)} {constraint.Operator} {RenderExpression(constraint.Right, dialect)}";
     }
 
+    private static string RenderPredicateCheck(PredicateCheckConstraint check, IDialect dialect)
+        => CheckPredicateSqlRenderer.Render(check.Predicate, dialect);
+
     internal static IReadOnlyList<SchemaCheckDefinition> RenderTableChecks(TableViewModel table, IDialect dialect)
     {
-        IEnumerable<SchemaCheckDefinition> Render(CheckConstraint[] comparisons,
+        IEnumerable<SchemaCheckDefinition> Render(CheckConstraint[] comparisons, PredicateCheckConstraint[] predicates,
             MembershipCheckConstraint[] memberships, RegexCheckConstraint[] regexes)
             => comparisons.Select(check => new SchemaCheckDefinition(check.Name, RenderCheck(check, dialect)))
+                .Concat(predicates.Select(check => new SchemaCheckDefinition(check.Name, RenderPredicateCheck(check, dialect))))
                 .Concat(memberships.Select(check => new SchemaCheckDefinition(check.Name, RenderMembership(check, dialect))))
                 .Concat(regexes.Select(check => new SchemaCheckDefinition(check.Name, RenderRegex(check, dialect))));
 
         return table.Columns.Where(column => column.RenderChecks)
-            .SelectMany(column => Render(column.Checks, column.MembershipChecks, column.RegexChecks))
-            .Concat(Render(table.Checks, table.MembershipChecks, table.RegexChecks)).ToArray();
+            .SelectMany(column => Render(column.Checks, column.PredicateChecks, column.MembershipChecks, column.RegexChecks))
+            .Concat(Render(table.Checks, table.PredicateChecks, table.MembershipChecks, table.RegexChecks)).ToArray();
     }
 
     private static string RenderExpression(Expression expression, IDialect dialect)
