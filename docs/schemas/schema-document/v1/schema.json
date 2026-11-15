@@ -122,6 +122,7 @@
         "length": { "description": "The positive maximum length for string or binary logical types.", "type": "integer", "minimum": 1 },
         "precision": { "description": "The positive numeric precision for decimal-like logical types.", "type": "integer", "minimum": 1, "maximum": 255 },
         "scale": { "description": "The numeric scale; precision must also be specified.", "type": "integer", "minimum": 0, "maximum": 255 },
+        "fractionalSecondsPrecision": { "description": "The number of fractional-second digits in a logical time or timestamp type.", "type": "integer", "minimum": 0, "maximum": 9 },
         "nullable": { "description": "Whether the column accepts null values.", "type": "boolean", "default": false },
         "unique": { "description": "Whether the column has a single-column unique constraint.", "type": "boolean", "default": false },
         "default": { "description": "A typed literal default value, separate from column generation.", "$ref": "#/$defs/literal" },
@@ -147,11 +148,18 @@
         "structuredType": {
           "properties": {
             "nativeType": false, "length": false, "precision": false, "scale": false,
-            "identity": false, "defaultExpression": false,
+            "identity": false, "defaultExpression": false, "fractionalSecondsPrecision": false,
             "default": { "properties": { "type": { "const": "null" } } }
           },
           "dependentSchemas": {
             "default": { "required": ["nullable"], "properties": { "nullable": { "const": true } } }
+          }
+        },
+        "fractionalSecondsPrecision": {
+          "required": ["type"],
+          "properties": {
+            "type": { "enum": ["time", "datetime", "datetime2", "datetime-offset"] },
+            "nativeType": false
           }
         },
         "defaultExpression": {
@@ -378,8 +386,12 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "seed": { "description": "The first generated integer value.", "type": "integer", "default": 1 },
-        "increment": { "description": "The non-zero step between generated integer values.", "type": "integer", "not": { "const": 0 }, "default": 1 }
+        "mode": { "description": "Uses provider-managed identity settings with no seed or increment overrides.", "const": "provider-defaults" },
+        "seed": { "description": "The first generated integer value. Defaults to 1 when mode is omitted.", "type": "integer" },
+        "increment": { "description": "The non-zero step between generated integer values. Defaults to 1 when mode is omitted.", "type": "integer", "not": { "const": 0 } }
+      },
+      "dependentSchemas": {
+        "mode": { "properties": { "seed": false, "increment": false } }
       }
     },
     "generatedColumn": {

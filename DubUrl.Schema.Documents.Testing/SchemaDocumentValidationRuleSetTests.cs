@@ -22,14 +22,14 @@ public class SchemaDocumentValidationRuleSetTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(first.ColumnRules, Has.Count.EqualTo(10));
+            Assert.That(first.ColumnRules, Has.Count.EqualTo(11));
             Assert.That(first.ForeignKeyRules, Has.Count.EqualTo(6));
             Assert.That(first.IndexRules, Has.Count.EqualTo(3));
             Assert.That(first.CheckRules, Has.Count.EqualTo(4));
             Assert.That(first.ViewDeclarationRules, Has.Count.EqualTo(1));
             Assert.That(first.ViewRules, Has.Count.EqualTo(3));
             Assert.That(first.ViewGraphRules, Has.Count.EqualTo(1));
-            Assert.That(customized.ColumnRules, Has.Count.EqualTo(9));
+            Assert.That(customized.ColumnRules, Has.Count.EqualTo(10));
             Assert.That(second.ColumnRules.Select(rule => rule.Id),
                 Does.Contain(SchemaDocumentValidationRuleIds.Columns.LogicalType)
                     .And.Contain(SchemaDocumentValidationRuleIds.Columns.DefaultExpression));
@@ -139,6 +139,25 @@ public class SchemaDocumentValidationRuleSetTests
         Assert.That(
             () => ruleSet.WithColumnRule(new DuplicateColumnRule()),
             Throws.ArgumentException.With.Message.Contains(SchemaDocumentValidationRuleIds.Columns.LogicalType));
+    }
+
+    [TestCase("unknown", null, null, SchemaDocumentDiagnosticCodes.InvalidGeneration, ".identity.mode")]
+    [TestCase("provider-defaults", 5L, null, SchemaDocumentDiagnosticCodes.MutuallyExclusive, ".identity")]
+    [TestCase("provider-defaults", null, 2L, SchemaDocumentDiagnosticCodes.MutuallyExclusive, ".identity")]
+    public void Validate_RejectsInvalidProviderIdentitySettings(string mode, long? seed, long? increment,
+        string expectedCode, string pathSuffix)
+    {
+        var document = CreateDocument();
+        document.Tables[0].Columns[0].Identity = new IdentityColumnDocument
+        {
+            Mode = mode,
+            DeclaredSeed = seed,
+            DeclaredIncrement = increment
+        };
+
+        var diagnostic = new SchemaDocumentValidator().Validate(document).Single();
+        Assert.That(diagnostic.Code, Is.EqualTo(expectedCode));
+        Assert.That(diagnostic.Path, Is.EqualTo($"tables[0].columns[0]{pathSuffix}"));
     }
 
     [Test]

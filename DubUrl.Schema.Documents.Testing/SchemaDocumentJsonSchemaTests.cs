@@ -79,7 +79,10 @@ public class SchemaDocumentJsonSchemaTests
                     .OrderBy(name => name, StringComparer.Ordinal)
                     .ToArray();
                 var expected = type.GetProperties()
-                    .Select(property => JsonNamingPolicy.CamelCase.ConvertName(property.Name))
+                    .Where(property => !property.IsDefined(typeof(JsonIgnoreAttribute), inherit: false))
+                    .Select(property => property.GetCustomAttributes(typeof(JsonPropertyNameAttribute), inherit: false)
+                        .Cast<JsonPropertyNameAttribute>().SingleOrDefault()?.Name
+                        ?? JsonNamingPolicy.CamelCase.ConvertName(property.Name))
                     .OrderBy(name => name, StringComparer.Ordinal)
                     .ToArray();
 

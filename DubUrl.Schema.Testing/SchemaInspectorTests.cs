@@ -35,6 +35,30 @@ public class SchemaInspectorTests
     }
 
     [Test]
+    public async Task Inspect_PreservesDeclaredTemporalPrecisionAndIdentityWithoutNumericSettings()
+    {
+        var features = new[] { SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Generation };
+        var id = new MetadataColumn("id", 1, DbType.Int64, false) { Generation = new() };
+        var stamp = new MetadataColumn("stamp", 2, DbType.DateTime2, false) { NativeType = "TIMESTAMP_NS" };
+        var table = new MetadataTable(new("items"), [id, stamp]);
+        var options = new DiscoveryOptions { Features = features };
+        var metadata = new SchemaMetadata([table], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []);
+        var reader = new Mock<ITemporalColumnMetadataReader>();
+        var connection = new Mock<System.Data.Common.DbConnection>();
+        connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
+        reader.Setup(value => value.ReadAsync(connection.Object, options, default)).ReturnsAsync(metadata);
+        reader.Setup(value => value.GetFractionalSecondsPrecision(stamp)).Returns(9);
+
+        var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object, options);
+
+        Assert.That(result.Diagnostics, Is.Empty);
+        var columns = result.Schema!.Tables.Values.Single().Columns;
+        Assert.That(columns["id"].Generation, Is.TypeOf<ProviderDefaultIdentityColumnGeneration>());
+        Assert.That(columns["stamp"].FractionalSecondsPrecision, Is.EqualTo(9));
+        Assert.That(columns["stamp"].NativeType, Is.Null);
+    }
+
+    [Test]
     public void Map_PreservesTableAndColumnAnnotationsAsImmutableSnapshots()
     {
         var annotations = new Dictionary<string, string> { ["myapp.Source"] = "ERP", ["myapp.source"] = "" };

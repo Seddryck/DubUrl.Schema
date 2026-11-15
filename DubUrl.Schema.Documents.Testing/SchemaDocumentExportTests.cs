@@ -68,6 +68,32 @@ public class SchemaDocumentExportTests
 
     [TestCase(SchemaDocumentFormat.Json)]
     [TestCase(SchemaDocumentFormat.Yaml)]
+    public void Export_RoundTrip_PreservesTimestampPrecisionAndUnspecifiedIdentitySettings(SchemaDocumentFormat format)
+    {
+        var id = new Column("id", DbType.Int64, generation: new ProviderDefaultIdentityColumnGeneration());
+        var timestamp = new Column("stamp", DbType.DateTime2) { FractionalSecondsPrecision = 9 };
+        var table = new Table("items", [id, timestamp]);
+        var document = new SchemaDocumentExporter().Map(new Schema([table]));
+
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, document, format);
+        var written = Encoding.UTF8.GetString(stream.ToArray());
+        Assert.That(written, Does.Contain("provider-defaults").And.Not.Contain("seed").And.Not.Contain("increment"));
+        stream.Position = 0;
+
+        var read = (V1.SchemaDocument)new SchemaDocumentReader().Read(stream, format);
+        var identity = read.Tables.Single().Columns[0].Identity!;
+        Assert.That(identity.DeclaredSeed, Is.Null);
+        Assert.That(identity.DeclaredIncrement, Is.Null);
+        Assert.That(() => identity.Seed, Throws.TypeOf<InvalidOperationException>());
+        Assert.That(() => identity.Increment, Throws.TypeOf<InvalidOperationException>());
+        var mapped = new SchemaDocumentMapper().Map(read).Tables.Values.Single();
+        Assert.That(mapped.Columns["id"].Generation, Is.TypeOf<ProviderDefaultIdentityColumnGeneration>());
+        Assert.That(mapped.Columns["stamp"].FractionalSecondsPrecision, Is.EqualTo(9));
+    }
+
+    [TestCase(SchemaDocumentFormat.Json)]
+    [TestCase(SchemaDocumentFormat.Yaml)]
     public void Export_IsDeterministicAcrossCultures(SchemaDocumentFormat format)
     {
         var schema = new Schema([new Table("test", [new Column("value", DbType.Decimal, 12.34m)])]);

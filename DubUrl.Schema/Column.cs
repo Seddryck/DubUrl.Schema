@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -36,6 +36,26 @@ public class Column
     public StructuredColumnType? StructuredType { get; }
     public NativeTypeFallback NativeTypeFallback { get; }
     public ColumnGeneration? Generation { get; }
+
+    private readonly int? fractionalSecondsPrecision;
+
+    /// <summary>Gets the number of fractional digits in the declared temporal type.</summary>
+    /// <value>The declared precision, or null when the provider chooses the default.</value>
+    public int? FractionalSecondsPrecision
+    {
+        get => fractionalSecondsPrecision;
+        init
+        {
+            if (value is < 0 or > 9)
+                throw new ArgumentOutOfRangeException(nameof(value), "Fractional seconds precision must be between 0 and 9.");
+            if (value is not null && (!SupportsFractionalSecondsPrecision(Type) || NativeType is not null))
+                throw new ArgumentException("Fractional seconds precision requires a logical time or timestamp type without a native override.", nameof(value));
+            fractionalSecondsPrecision = value;
+        }
+    }
+
+    internal static bool SupportsFractionalSecondsPrecision(System.Data.DbType type)
+        => type is System.Data.DbType.Time or System.Data.DbType.DateTime or System.Data.DbType.DateTime2 or System.Data.DbType.DateTimeOffset;
 
     public Column(string name, System.Data.DbType type, object? defaultValue, IConstraint[]? constraints,
         string? description, NativeDatabaseType? nativeType, NativeTypeFallback nativeTypeFallback, ColumnGeneration? generation)

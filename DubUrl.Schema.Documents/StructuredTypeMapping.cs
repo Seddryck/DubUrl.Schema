@@ -19,7 +19,8 @@ internal static class StructuredTypeMapping
         (string Name, object? Value)[] incompatible =
         [
             ("type", column.Type), ("nativeType", column.NativeType), ("length", column.Length),
-            ("precision", column.Precision), ("scale", column.Scale), ("identity", column.Identity),
+            ("precision", column.Precision), ("scale", column.Scale),
+            ("fractionalSecondsPrecision", column.FractionalSecondsPrecision), ("identity", column.Identity),
             ("defaultExpression", column.DefaultExpression)
         ];
         foreach (var (name, value) in incompatible)

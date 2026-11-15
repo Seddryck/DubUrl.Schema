@@ -183,6 +183,7 @@ public sealed class SchemaDocumentExporter
 
     private static void MapColumnFacets(Column column, ColumnDocument result)
     {
+        result.FractionalSecondsPrecision = column.FractionalSecondsPrecision;
         if (column is VarLengthColumn length) result.Length = length.Length;
         if (column is NumericColumn numeric)
         { result.Precision = checked((byte)numeric.Precision); result.Scale = checked((byte)numeric.Scale); }
@@ -193,6 +194,10 @@ public sealed class SchemaDocumentExporter
         if (column.Generation is IdentityColumnGeneration identity)
         {
             result.Identity = new() { Seed = identity.Seed, Increment = identity.Increment };
+        }
+        else if (column.Generation is ProviderDefaultIdentityColumnGeneration)
+        {
+            result.Identity = new() { Mode = "provider-defaults" };
         }
         else if (column.Generation is GeneratedColumnGeneration generated)
         {

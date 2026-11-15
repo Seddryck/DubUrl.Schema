@@ -74,7 +74,7 @@ public sealed class SchemaInspector
         { return Failure("SDI002", MetadataCoverage.Inaccessible, "Database metadata could not be accessed."); }
         cancellationToken.ThrowIfCancellationRequested();
         return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns,
-            reader as IHierarchyMetadataReader);
+            reader as IHierarchyMetadataReader, reader as ITemporalColumnMetadataReader);
     }
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options = null, CancellationToken cancellationToken = default)
@@ -93,10 +93,16 @@ public sealed class SchemaInspector
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
         IHierarchyMetadataReader? hierarchyMetadata)
+        => Map(metadata, options, cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata, null);
+
+    private static SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
+        CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
+        IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
+        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         cancellationToken.ThrowIfCancellationRequested();
-        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata); }
+        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata, temporalMetadata); }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
         { return Failure("SDI007", MetadataCoverage.Unrepresentable, "Metadata could not be mapped into a valid schema."); }
     }
@@ -104,7 +110,7 @@ public sealed class SchemaInspector
     private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
-        IHierarchyMetadataReader? hierarchyMetadata)
+        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata)
     {
         var diagnostics = new List<DiscoveryDiagnostic>();
         var coverage = GetRequestedCoverage(metadata, options, diagnostics);
@@ -120,7 +126,7 @@ public sealed class SchemaInspector
             {
                 var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
                     .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
-                var mapped = MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults), structuredMetadata);
+                var mapped = MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults), structuredMetadata, temporalMetadata);
                 if (mapped is null)
                 {
                     ApplyDiagnosticCoverage(coverage, diagnostics);
@@ -200,14 +206,16 @@ public sealed class SchemaInspector
 
     private static Table? MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
         List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys,
-        bool inspectDefaults, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata)
+        bool inspectDefaults, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
+        ITemporalColumnMetadataReader? temporalMetadata)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
         var columns = new List<Column>();
         foreach (var column in table.Columns.OrderBy(column => column.Ordinal))
         {
             var structured = structuredMetadata?.GetValueOrDefault(new StructuredColumnIdentity(table.Identity, column.Name));
-            var mapped = structured is null ? MapColumn(table.Identity, column, diagnostics, inspectDefaults)
+            var mapped = structured is null
+                ? MapColumn(table.Identity, column, diagnostics, inspectDefaults, temporalMetadata?.GetFractionalSecondsPrecision(column))
                 : MapStructuredColumn(table.Identity, column, structured, diagnostics, inspectDefaults);
             if (mapped is null) return null;
             columns.Add(mapped);
@@ -314,15 +322,16 @@ public sealed class SchemaInspector
     {
         return column.Generation is not { } g ? null : g.Expression is not null
             ? new GeneratedColumnGeneration(Expression(g.Expression), g.Stored ? GeneratedColumnStorage.Stored : GeneratedColumnStorage.Virtual)
-            : new IdentityColumnGeneration(g.Seed ?? 1, g.Increment ?? 1);
+            : g is { Seed: null, Increment: null } ? new ProviderDefaultIdentityColumnGeneration()
+                : new IdentityColumnGeneration(g.Seed ?? 1, g.Increment ?? 1);
     }
 
     private static Column MapColumn(MetadataName table, MetadataColumn column,
-        List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults)
+        List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults, int? fractionalSecondsPrecision)
     {
         if (column.Default is ColumnDefaultExpression expression && inspectDefaults)
         {
-            try { return MapColumn(column, null, expression); }
+            try { return MapColumn(column, null, expression, fractionalSecondsPrecision); }
             catch (ArgumentException)
             {
                 diagnostics.Add(new("SDI011", SchemaFeature.Defaults, MetadataCoverage.Unrepresentable,
@@ -335,7 +344,8 @@ public sealed class SchemaInspector
                 $"The catalog default for column '{column.Name}' cannot be represented as a typed default.", table));
         }
 
-        return MapColumn(column, column.Default is ColumnDefaultExpression or MetadataExpression ? null : column.Default);
+        return MapColumn(column, column.Default is ColumnDefaultExpression or MetadataExpression ? null : column.Default,
+            null, fractionalSecondsPrecision);
     }
 
     private static Column? MapStructuredColumn(MetadataName table, MetadataColumn column,
@@ -372,13 +382,21 @@ public sealed class SchemaInspector
         { Annotations = column.Annotations };
     }
 
-    private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression = null)
+    private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression,
+        int? fractionalSecondsPrecision)
     {
         if (column.Type is null || column.Nullable is null) throw new NotSupportedException();
         var constraints = new IConstraint[] { column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint() };
-        var native = MapNativeType(column);
+        var native = fractionalSecondsPrecision is null ? MapNativeType(column) : null;
         var generation = MapGeneration(column);
         var type = column.Type.Value;
+        if (fractionalSecondsPrecision is not null)
+        {
+            return new Column(column.Name, type, defaultValue, constraints, column.Comment, generation: generation,
+                defaultExpression: expression)
+            { Annotations = column.Annotations, FractionalSecondsPrecision = fractionalSecondsPrecision };
+        }
+
         return column.Length is { } length
             ? new VarLengthColumn(column.Name, type, length, defaultValue, constraints, column.Comment, native,
                 generation: generation, defaultExpression: expression) { Annotations = column.Annotations }
