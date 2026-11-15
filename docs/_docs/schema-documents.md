@@ -19,7 +19,7 @@ Declarations are ordered. That order is retained for tables, columns, constraint
 |---|---|
 | Object identity | `catalog`, `database`, and `schema` are optional qualifiers; `name` is required. |
 | Tables | Contain ordered columns, one optional table-level primary key, table checks, and named foreign keys. |
-| Columns | Support scalar or structured types, nullability, uniqueness, defaults, descriptions, generation, and column checks. Scalar types can also specify length, precision/scale, and native-type fallback. |
+| Columns | Support scalar or structured types, nullability, uniqueness, defaults, descriptions, string annotations, generation, and column checks. Scalar types can also specify length, precision/scale, and native-type fallback. |
 | Primary keys | Are table-level, named or unnamed, single-column or composite, with ordered unique column references. |
 | Unique tuples | Use optional table-level `uniqueConstraints` with ordered `columns`, an optional `name`, and an optional `nullPolicy`. |
 | Checks | Support comparison, membership, and regular-expression forms with structured expressions and explicit null behavior. |

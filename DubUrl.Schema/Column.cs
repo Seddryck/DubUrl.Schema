@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -8,6 +9,8 @@ using DubUrl.Schema.Constraints;
 namespace DubUrl.Schema;
 public class Column
 {
+    private readonly ImmutableSortedDictionary<string, string> annotations = ImmutableSortedDictionary<string, string>.Empty;
+
     public string Name { get; }
     /// <summary>Gets the scalar type.</summary>
     /// <value>The scalar type, or <see cref="System.Data.DbType.Object"/> for a structured column.</value>
@@ -18,6 +21,17 @@ public class Column
     public ColumnDefaultExpression? DefaultExpression { get; }
     public ConstraintCollection Constraints { get; }
     public string? Description { get; }
+    public IReadOnlyDictionary<string, string> Annotations
+    {
+        get => annotations;
+        init
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            annotations = value.ToImmutableSortedDictionary(StringComparer.Ordinal);
+            if (annotations.Values.Any(annotation => annotation is null))
+                throw new ArgumentException("Column annotations require string values.", nameof(value));
+        }
+    }
     public NativeDatabaseType? NativeType { get; }
     public StructuredColumnType? StructuredType { get; }
     public NativeTypeFallback NativeTypeFallback { get; }
