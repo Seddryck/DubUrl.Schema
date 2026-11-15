@@ -237,7 +237,7 @@ public sealed partial class SchemaDocumentValidator
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.MutuallyExclusive,
                         "Provider-default identity cannot declare a seed or increment.", $"{context.Path}.identity"));
                 }
-                if (identity.Increment == 0)
+                if (identity.DeclaredIncrement == 0)
                 {
                     diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidGeneration,
                         "Identity increment cannot be zero.", $"{context.Path}.identity.increment"));

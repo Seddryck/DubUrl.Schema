@@ -85,6 +85,8 @@ public class SchemaDocumentExportTests
         var identity = read.Tables.Single().Columns[0].Identity!;
         Assert.That(identity.DeclaredSeed, Is.Null);
         Assert.That(identity.DeclaredIncrement, Is.Null);
+        Assert.That(() => identity.Seed, Throws.TypeOf<InvalidOperationException>());
+        Assert.That(() => identity.Increment, Throws.TypeOf<InvalidOperationException>());
         var mapped = new SchemaDocumentMapper().Map(read).Tables.Values.Single();
         Assert.That(mapped.Columns["id"].Generation, Is.TypeOf<ProviderDefaultIdentityColumnGeneration>());
         Assert.That(mapped.Columns["stamp"].FractionalSecondsPrecision, Is.EqualTo(9));

@@ -107,11 +107,11 @@ public sealed class IdentityColumnDocument
 
     [System.Text.Json.Serialization.JsonIgnore]
     [YamlDotNet.Serialization.YamlIgnore]
-    public long Seed { get => DeclaredSeed ?? 1; set => DeclaredSeed = value; }
+    public long Seed { get => ResolveNumericSetting(DeclaredSeed); set => DeclaredSeed = value; }
 
     [System.Text.Json.Serialization.JsonIgnore]
     [YamlDotNet.Serialization.YamlIgnore]
-    public long Increment { get => DeclaredIncrement ?? 1; set => DeclaredIncrement = value; }
+    public long Increment { get => ResolveNumericSetting(DeclaredIncrement); set => DeclaredIncrement = value; }
 
     [System.Text.Json.Serialization.JsonPropertyName("seed")]
     [YamlDotNet.Serialization.YamlMember(Alias = "seed")]
@@ -120,6 +120,10 @@ public sealed class IdentityColumnDocument
     [System.Text.Json.Serialization.JsonPropertyName("increment")]
     [YamlDotNet.Serialization.YamlMember(Alias = "increment")]
     public long? DeclaredIncrement { get; set; }
+
+    private long ResolveNumericSetting(long? value)
+        => Mode != "provider-defaults" ? value ?? 1
+            : throw new InvalidOperationException("Provider-managed identity has no numeric seed or increment.");
 }
 
 public sealed class GeneratedColumnDocument
