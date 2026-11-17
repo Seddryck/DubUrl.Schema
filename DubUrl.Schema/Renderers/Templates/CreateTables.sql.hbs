@@ -9,6 +9,8 @@
     {{#if RenderDefault}}{{#if HasDefault}} DEFAULT {{columndefault this}}{{/if}}{{/if~}}
     {{#unless @root.PlanProviderChecks}}{{#if RenderChecks}}{{#each Checks}} CHECK ({{check this}})
     {{~ /each ~}}
+    {{#each PredicateChecks}} {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{predicatecheck this}})
+    {{~ /each ~}}
     {{#each MembershipChecks}} CHECK ({{membership this}})
     {{~ /each ~}}
     {{#each RegexChecks}} CHECK ({{regex this}})
@@ -38,6 +40,9 @@
 {{#unless @root.PlanProviderChecks}}
 {{#each Checks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{check this}})
+{{/each~}}
+{{#each PredicateChecks}}
+    , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{predicatecheck this}})
 {{/each~}}
 {{#each MembershipChecks}}
     , {{#if Name}}CONSTRAINT {{identity Name}} {{/if}}CHECK ({{membership this}})

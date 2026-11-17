@@ -29,6 +29,7 @@ public class TableViewModel
     public MembershipCheckConstraint[] MembershipChecks { get; }
     public RegexCheckConstraint[] RegexChecks { get; }
     public CheckConstraint[] Checks { get; }
+    public PredicateCheckConstraint[] PredicateChecks { get; }
     public ForeignKeyConstraintViewModel[] ForeignKeys { get; }
     public bool RenderForeignKeysInline { get; }
     public string? Description { get; }
@@ -58,6 +59,7 @@ public class TableViewModel
         MembershipChecks = [.. table.Constraints.OfType<MembershipCheckConstraint>()];
         RegexChecks = [.. table.Constraints.OfType<RegexCheckConstraint>()];
         Checks = [.. table.Constraints.OfType<CheckConstraint>()];
+        PredicateChecks = [.. table.Constraints.OfType<PredicateCheckConstraint>()];
         ForeignKeys = table.Constraints.OfType<ForeignKeyConstraint>()
             .Select(constraint => new ForeignKeyConstraintViewModel(constraint, table.Identity))
             .ToArray();

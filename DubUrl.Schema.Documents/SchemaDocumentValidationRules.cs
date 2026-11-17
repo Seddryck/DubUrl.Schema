@@ -223,6 +223,7 @@ public static class SchemaDocumentValidationRuleIds
     public static class Checks
     {
         public const string Kind = "check.kind";
+        public const string Predicate = "check.predicate";
         public const string Comparison = "check.comparison";
         public const string Membership = "check.membership";
         public const string Regex = "check.regex";

@@ -2,6 +2,7 @@ using System.Data;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using DubUrl.Parser;
 using DubUrl.Schema.Constraints;
 using Json.Schema;
 using NUnit.Framework;
@@ -10,6 +11,45 @@ namespace DubUrl.Schema.Documents.Testing;
 
 public class SchemaDocumentExportTests
 {
+    [TestCase(SchemaDocumentFormat.Json)]
+    [TestCase(SchemaDocumentFormat.Yaml)]
+    public void Export_RoundTrip_PreservesTypedCheckPredicate(SchemaDocumentFormat format)
+    {
+        const string sql = """(("EndDate" >= "StartDate") OR ("EndDate" IS NULL))""";
+        var predicate = SqlParserAdapter.ParseCheckExpression(sql, SqlDialect.DuckDb);
+        var table = new Table("Production.WorkOrder",
+            [new Column("StartDate", DbType.Date), new Column("EndDate", DbType.Date)],
+            [new PredicateCheckConstraint(predicate, "Production.WorkOrder_check")]);
+        var schema = new Schema([table]);
+
+        var exporter = new SchemaDocumentExporter();
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, exporter.Map(schema), format);
+        if (format == SchemaDocumentFormat.Json)
+        {
+            var schemaPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "schemas", "schema-document", "v1", "schema.json");
+            var specification = JsonSchema.FromText(File.ReadAllText(schemaPath), new BuildOptions { SchemaRegistry = new SchemaRegistry() });
+            using var json = JsonDocument.Parse(stream.ToArray());
+            var validation = specification.Evaluate(json.RootElement, new EvaluationOptions { OutputFormat = OutputFormat.List });
+            Assert.That(validation.IsValid, Is.True, JsonSerializer.Serialize(validation));
+        }
+
+        stream.Position = 0;
+        var restored = new SchemaDocumentMapper().Map(new SchemaDocumentReader().Read(stream, format));
+        var check = restored.Tables.Values.Single().Constraints.OfType<PredicateCheckConstraint>().Single();
+        var disjunction = (SqlExpression.BinaryOp)check.Predicate;
+        var comparison = (SqlExpression.BinaryOp)disjunction.Left;
+        var endDate = (SqlExpression.Identifier)((SqlExpression.IsNull)disjunction.Right).Operand;
+        Assert.Multiple(() =>
+        {
+            Assert.That(check.Name, Is.EqualTo("Production.WorkOrder_check"));
+            Assert.That(disjunction.Operator, Is.EqualTo(SqlBinaryOperator.Or));
+            Assert.That(comparison.Operator, Is.EqualTo(SqlBinaryOperator.GreaterThanOrEqual));
+            Assert.That(((SqlExpression.Identifier)comparison.Right).Parts.Single().Name, Is.EqualTo("StartDate"));
+            Assert.That(endDate.Parts.Single(), Is.EqualTo(new SqlIdentifierPart("EndDate", '"')));
+        });
+    }
+
     [Test]
     public void Export_PhysicalOptionsRejectsLossyV1Conversion()
     {

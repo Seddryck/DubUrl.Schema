@@ -147,8 +147,19 @@ public sealed class ExpressionDocument
     public List<ExpressionDocument> Arguments { get; set; } = [];
 }
 
+public sealed class CheckPredicateDocument
+{
+    public string? Kind { get; set; }
+    public string? Name { get; set; }
+    public string? QuoteStyle { get; set; }
+    public string? Operator { get; set; }
+    public LiteralDocument? Value { get; set; }
+    public List<CheckPredicateDocument> Operands { get; set; } = [];
+}
+
 public sealed class CheckDocument
 {
+    public CheckPredicateDocument? Predicate { get; set; }
     public string? Name { get; set; }
     public string? Kind { get; set; }
     public ExpressionDocument? Left { get; set; }

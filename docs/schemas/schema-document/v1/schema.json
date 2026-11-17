@@ -436,27 +436,98 @@
         { "properties": { "kind": { "const": "function" } }, "required": ["function"], "not": { "anyOf": [{ "required": ["name"] }, { "required": ["value"] }] } }
       ]
     },
+    "checkPredicate": {
+      "description": "A typed node in a row check predicate.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["binary", "is-null", "is-not-null", "column", "literal"] },
+        "name": { "type": "string", "minLength": 1 },
+        "quoteStyle": { "enum": ["\"", "[", "`"] },
+        "operator": { "enum": ["OR", "AND", "=", "<>", "<", "<=", ">", ">="] },
+        "value": { "$ref": "#/$defs/checkPredicateLiteral" },
+        "operands": { "type": "array", "items": { "$ref": "#/$defs/checkPredicate" } }
+      },
+      "oneOf": [
+        {
+          "properties": { "kind": { "const": "binary" }, "operands": { "minItems": 2, "maxItems": 2 } },
+          "required": ["operator", "operands"],
+          "not": { "anyOf": [{ "required": ["name"] }, { "required": ["quoteStyle"] }, { "required": ["value"] }] }
+        },
+        {
+          "properties": { "kind": { "enum": ["is-null", "is-not-null"] }, "operands": { "minItems": 1, "maxItems": 1 } },
+          "required": ["operands"],
+          "not": { "anyOf": [{ "required": ["name"] }, { "required": ["quoteStyle"] }, { "required": ["operator"] }, { "required": ["value"] }] }
+        },
+        {
+          "properties": { "kind": { "const": "column" }, "operands": { "maxItems": 0 } },
+          "required": ["name"],
+          "not": { "anyOf": [{ "required": ["operator"] }, { "required": ["value"] }] }
+        },
+        {
+          "properties": { "kind": { "const": "literal" }, "operands": { "maxItems": 0 } },
+          "required": ["value"],
+          "not": { "anyOf": [{ "required": ["name"] }, { "required": ["quoteStyle"] }, { "required": ["operator"] }] }
+        }
+      ]
+    },
+    "checkPredicateLiteral": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["number", "string", "national-string", "boolean", "null", "date", "time", "timestamp"] },
+        "value": { "type": "string" }
+      },
+      "oneOf": [
+        {
+          "properties": { "type": { "const": "null" } },
+          "not": { "required": ["value"] }
+        },
+        {
+          "properties": { "type": { "const": "boolean" }, "value": { "enum": ["true", "false"] } },
+          "required": ["value"]
+        },
+        {
+          "properties": { "type": { "const": "number" }, "value": { "pattern": "^[+-]?(?:[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+)(?:[Ee][+-]?[0-9]+)?$" } },
+          "required": ["value"]
+        },
+        {
+          "properties": { "type": { "enum": ["string", "national-string", "date", "time", "timestamp"] } },
+          "required": ["value"]
+        }
+      ]
+    },
     "check": {
-      "description": "A named or unnamed comparison, membership, or regular-expression check constraint.",
+      "description": "A named or unnamed comparison, typed predicate, membership, or regular-expression check constraint.",
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
       "properties": {
         "name": { "description": "The optional constraint name.", "type": "string", "minLength": 1 },
-        "kind": { "description": "The check constraint variant.", "type": "string", "enum": ["comparison", "membership", "regex"] },
+        "kind": { "description": "The check constraint variant.", "type": "string", "enum": ["comparison", "predicate", "membership", "regex"] },
         "left": { "description": "The left expression of a comparison.", "$ref": "#/$defs/expression" },
         "operator": { "description": "The comparison operator.", "type": "string", "enum": ["=", "<>", "!=", "<", "<=", ">", ">="] },
         "right": { "description": "The right expression of a comparison.", "$ref": "#/$defs/expression" },
         "expression": { "description": "The expression tested by a membership or regex check.", "$ref": "#/$defs/expression" },
         "values": { "description": "Typed membership values.", "type": "array", "items": { "$ref": "#/$defs/literal" }, "minItems": 1 },
         "nullBehavior": { "description": "The explicit null policy for membership or regex checks.", "type": "string", "enum": ["sql-three-valued-logic", "match-null", "allow-null", "reject-null"] },
-        "pattern": { "description": "The regular-expression pattern.", "type": "string" }
+        "pattern": { "description": "The regular-expression pattern.", "type": "string" },
+        "predicate": { "description": "The typed expression evaluated by a predicate check.", "$ref": "#/$defs/checkPredicate" }
       },
+      "if": { "required": ["predicate"] },
+      "then": { "properties": { "kind": { "const": "predicate" } } },
       "oneOf": [
         {
           "properties": { "kind": { "const": "comparison" } },
           "required": ["left", "operator", "right"],
           "not": { "anyOf": [{ "required": ["expression"] }, { "required": ["values"] }, { "required": ["nullBehavior"] }, { "required": ["pattern"] }] }
+        },
+        {
+          "properties": { "kind": { "const": "predicate" } },
+          "required": ["predicate"],
+          "not": { "anyOf": [{ "required": ["left"] }, { "required": ["operator"] }, { "required": ["right"] }, { "required": ["expression"] }, { "required": ["values"] }, { "required": ["nullBehavior"] }, { "required": ["pattern"] }] }
         },
         {
           "properties": { "kind": { "const": "membership" }, "nullBehavior": { "enum": ["sql-three-valued-logic", "match-null"] } },
