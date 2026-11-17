@@ -1,5 +1,7 @@
 using DubUrl.Discovery;
+using DubUrl.Parser;
 using DubUrl.Schema.Constraints;
+using DubUrl.Schema.Renderers;
 using System.Data.Common;
 
 namespace DubUrl.Schema;
@@ -42,18 +44,10 @@ public sealed class SchemaInspector
     {
         ArgumentNullException.ThrowIfNull(borrowed);
         ArgumentNullException.ThrowIfNull(reader);
-        options ??= new();
-        if (ReferenceEquals(options.Features, new DiscoveryOptions().Features))
-        {
-            var capabilities = reader.Capabilities;
-            var annotations = new[] { SchemaFeature.Annotations, SchemaFeature.ColumnAnnotations }
-                .Where(feature => capabilities?.TryGetValue(feature, out var coverage) == true && coverage == MetadataCoverage.Available)
-                .ToArray();
-            if (annotations.Length > 0)
-                options = options with { Features = [.. options.Features, .. annotations] };
-        }
-        if (options.Features.Contains(SchemaFeature.Checks) && !options.IncludeCheckPredicates)
-            options = options with { IncludeCheckPredicates = true };
+        options = IncludeDefaultAnnotations(options ?? new(), reader);
+        var readOptions = options.Features.Contains(SchemaFeature.Checks)
+            ? options with { IncludeCheckPredicates = true }
+            : options;
 
         cancellationToken.ThrowIfCancellationRequested();
         if (borrowed.State != System.Data.ConnectionState.Open)
@@ -64,12 +58,12 @@ public sealed class SchemaInspector
         {
             if (reader is IStructuredColumnMetadataReader structuredReader)
             {
-                var result = await structuredReader.ReadWithStructuredTypesAsync(borrowed, options, cancellationToken).ConfigureAwait(false);
+                var result = await structuredReader.ReadWithStructuredTypesAsync(borrowed, readOptions, cancellationToken).ConfigureAwait(false);
                 (metadata, structuredColumns) = (result.Metadata, result.StructuredColumns);
             }
             else
             {
-                metadata = await reader.ReadAsync(borrowed, options, cancellationToken).ConfigureAwait(false);
+                metadata = await reader.ReadAsync(borrowed, readOptions, cancellationToken).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -78,6 +72,18 @@ public sealed class SchemaInspector
         cancellationToken.ThrowIfCancellationRequested();
         return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns,
             reader as IHierarchyMetadataReader, reader as ITemporalColumnMetadataReader);
+    }
+
+    private static DiscoveryOptions IncludeDefaultAnnotations(DiscoveryOptions options, ISchemaMetadataReader reader)
+    {
+        if (!ReferenceEquals(options.Features, new DiscoveryOptions().Features))
+            return options;
+
+        var capabilities = reader.Capabilities;
+        var annotations = new[] { SchemaFeature.Annotations, SchemaFeature.ColumnAnnotations }
+            .Where(feature => capabilities?.TryGetValue(feature, out var coverage) == true && coverage == MetadataCoverage.Available)
+            .ToArray();
+        return annotations.Length == 0 ? options : options with { Features = [.. options.Features, .. annotations] };
     }
 
     public SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options = null, CancellationToken cancellationToken = default)
@@ -129,7 +135,7 @@ public sealed class SchemaInspector
             {
                 var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
                     .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
-                var mapped = MapTable(table, selected, diagnostics, unique, options.Features.Contains(SchemaFeature.Defaults), structuredMetadata, temporalMetadata);
+                var mapped = MapTable(table, selected, diagnostics, unique, options, structuredMetadata, temporalMetadata);
                 if (mapped is null)
                 {
                     ApplyDiagnosticCoverage(coverage, diagnostics);
@@ -209,10 +215,11 @@ public sealed class SchemaInspector
 
     private static Table? MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
         List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys,
-        bool inspectDefaults, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
+        DiscoveryOptions options, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
         ITemporalColumnMetadataReader? temporalMetadata)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
+        var inspectDefaults = options.Features.Contains(SchemaFeature.Defaults);
         var columns = new List<Column>();
         foreach (var column in table.Columns.OrderBy(column => column.Ordinal))
         {
@@ -231,13 +238,37 @@ public sealed class SchemaInspector
         constraints.AddRange(table.Checks.OrderBy(check => check.Name, StringComparer.Ordinal).Select(check => new CheckConstraint(
             Expression(check.Left), check.Operator, Expression(check.Right), check.Name)));
         constraints.AddRange(table.CheckPredicates.OrderBy(check => check.Name, StringComparer.Ordinal)
-            .Select(check => new PredicateCheckConstraint(check.Expression, check.Name)));
+            .Select(check => MapCheckPredicate(check, options.IncludeCheckPredicates)));
         constraints.AddRange(uniqueKeys.Select(unique => new UniquenessConstraint(
             unique.Key.Columns.Select(name => byName[name]).ToArray(),
             unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));
 
         return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment, null, table.Annotations);
     }
+
+    private static Constraint MapCheckPredicate(MetadataCheckPredicate check, bool preferTyped)
+    {
+        if (!preferTyped && check.Expression is SqlExpression.BinaryOp comparison
+            && comparison.Operator is not (SqlBinaryOperator.And or SqlBinaryOperator.Or)
+            && ComparisonOperand(comparison.Left) is { } left
+            && ComparisonOperand(comparison.Right) is { } right)
+        {
+            return new CheckConstraint(left, CheckPredicateSqlRenderer.Operator(comparison.Operator), right, check.Name);
+        }
+
+        return new PredicateCheckConstraint(check.Expression, check.Name);
+    }
+
+    private static Expression? ComparisonOperand(SqlExpression expression) => expression switch
+    {
+        SqlExpression.Identifier { Parts.Length: 1 } identifier => new ColumnIdentityExpression(identifier.Parts[0].Name),
+        SqlExpression.Literal.String { IsNational: false } text => new ValueExpression(text.Value),
+        SqlExpression.Literal.Boolean boolean => new ValueExpression(boolean.Value),
+        // Decimal conversion may round literals with more than 28 digits.
+        SqlExpression.Literal.Number number when number.Text.Count(char.IsAsciiDigit) <= 28
+            && DiscoveryExpressions.TryLiteral(number.Text, out var value) && value is not null => new ValueExpression(value),
+        _ => null
+    };
 
     private static IEnumerable<Index> MapIndexes(MetadataTable table,
         (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys, List<DiscoveryDiagnostic> diagnostics)

@@ -36,9 +36,7 @@ internal static class CheckPredicateMapping
 
         return node.Kind switch
         {
-            "binary" when node is { Name: null, QuoteStyle: null, Value: null, Operands.Count: 2 }
-                && node.Operator is not null && Operators.TryGetValue(node.Operator, out var op)
-                => new SqlExpression.BinaryOp(Map(node.Operands[0], columns), op, Map(node.Operands[1], columns)),
+            "binary" => MapBinary(node, columns),
             "is-null" when IsNullTest(node) => new SqlExpression.IsNull(Map(node.Operands[0], columns)),
             "is-not-null" when IsNullTest(node) => new SqlExpression.IsNotNull(Map(node.Operands[0], columns)),
             "column" when node is { Operator: null, Value: null, Name.Length: > 0, Operands.Count: 0 }
@@ -47,6 +45,15 @@ internal static class CheckPredicateMapping
                 => MapLiteral(node.Value),
             _ => throw new FormatException($"Invalid check predicate node '{node.Kind}'.")
         };
+    }
+
+    private static SqlExpression.BinaryOp MapBinary(CheckPredicateDocument node, IReadOnlyList<ColumnDocument>? columns)
+    {
+        if (node is not { Name: null, QuoteStyle: null, Value: null, Operands.Count: 2, Operator: { } name }
+            || !Operators.TryGetValue(name, out var op))
+            throw new FormatException("Invalid check predicate node 'binary'.");
+
+        return new(Map(node.Operands[0], columns), op, Map(node.Operands[1], columns));
     }
 
     private static bool IsNullTest(CheckPredicateDocument node)

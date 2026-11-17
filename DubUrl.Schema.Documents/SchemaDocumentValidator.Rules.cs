@@ -667,9 +667,7 @@ public sealed partial class SchemaDocumentValidator
                 return;
             }
 
-            if (check.Left is not null || check.Right is not null || check.Operator is not null
-                || check.Expression is not null || check.Values is { Count: > 0 }
-                || check.NullBehavior is not null || check.Pattern is not null)
+            if (HasOtherCheckFields(check))
             {
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck,
                     "A predicate check must contain only a predicate and an optional name.", context.Path));
@@ -681,6 +679,11 @@ public sealed partial class SchemaDocumentValidator
                 diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.InvalidCheck, exception.Message, $"{context.Path}.predicate"));
             }
         }
+
+        private static bool HasOtherCheckFields(CheckDocument check)
+            => check.Left is not null || check.Right is not null || check.Operator is not null
+                || check.Expression is not null || check.Values is { Count: > 0 }
+                || check.NullBehavior is not null || check.Pattern is not null;
     }
 
     private sealed class ComparisonCheckRule : IValidationRule<CheckValidationContext>

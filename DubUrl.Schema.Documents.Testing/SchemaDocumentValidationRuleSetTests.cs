@@ -25,7 +25,14 @@ public class SchemaDocumentValidationRuleSetTests
             Assert.That(first.ColumnRules, Has.Count.EqualTo(11));
             Assert.That(first.ForeignKeyRules, Has.Count.EqualTo(6));
             Assert.That(first.IndexRules, Has.Count.EqualTo(3));
-            Assert.That(first.CheckRules, Has.Count.EqualTo(4));
+            Assert.That(first.CheckRules.Select(rule => rule.Id), Is.EquivalentTo(new[]
+            {
+                SchemaDocumentValidationRuleIds.Checks.Kind,
+                SchemaDocumentValidationRuleIds.Checks.Predicate,
+                SchemaDocumentValidationRuleIds.Checks.Comparison,
+                SchemaDocumentValidationRuleIds.Checks.Membership,
+                SchemaDocumentValidationRuleIds.Checks.Regex,
+            }));
             Assert.That(first.ViewDeclarationRules, Has.Count.EqualTo(1));
             Assert.That(first.ViewRules, Has.Count.EqualTo(3));
             Assert.That(first.ViewGraphRules, Has.Count.EqualTo(1));

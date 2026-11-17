@@ -13,6 +13,37 @@ namespace DubUrl.Schema.Testing;
 
 public class CheckPredicateDiscoveryTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task SimpleCheck_DiscoveryUsesComparisonUnlessTypedChecksAreRequested(bool includeCheckPredicates)
+    {
+        await using var connection = new DuckDBConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        await Execute(connection, "CREATE TABLE items (quantity INTEGER CHECK (quantity >= 0))");
+
+        var result = await new SchemaInspector().InspectAsync(connection, new DuckDbMetadataReader(), new DiscoveryOptions
+        {
+            Schemas = ["main"],
+            Features = [SchemaFeature.Tables, SchemaFeature.Columns, SchemaFeature.Checks],
+            IncludeCheckPredicates = includeCheckPredicates
+        });
+
+        Assert.That(result.IsComplete, Is.True, string.Join(Environment.NewLine, result.Diagnostics));
+        var check = result.Schema!.Tables.Values.Single().Constraints.Single();
+        if (includeCheckPredicates)
+        {
+            Assert.That(check, Is.TypeOf<PredicateCheckConstraint>());
+            return;
+        }
+
+        Assert.That(check, Is.TypeOf<CheckConstraint>());
+        var comparison = (CheckConstraint)check;
+        using var scope = Assert.EnterMultipleScope();
+        Assert.That(((ColumnIdentityExpression)comparison.Left).Name, Is.EqualTo("quantity"));
+        Assert.That(comparison.Operator, Is.EqualTo(">="));
+        Assert.That(((ValueExpression)comparison.Right).Value, Is.EqualTo(0).And.TypeOf<int>());
+    }
+
     [Test]
     public async Task WorkOrderCheck_DiscoveryAndRenderedDdlPreserveThePredicate()
     {
