@@ -47,7 +47,7 @@ internal static class HierarchyPlanning
             ValidateAdditions(table, storage);
             var expanded = new Table(table.Identity, [.. table.Columns.Values, .. storage.Columns],
                 [.. table.Constraints.OfType<Constraint>(), .. storage.Constraints], table.Description, table.PhysicalOptions,
-                MergeAnnotations(table, storage, dialect));
+                MergeAnnotations(table, storage, dialect)) { Tags = table.Tags };
             ValidateStorage(expanded, storage, dialect, nativeTypes);
             return (new(table.Identity, storage.Representation, storage.ParentExistenceEnforced, null), expanded);
         }

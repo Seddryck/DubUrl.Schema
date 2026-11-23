@@ -13,6 +13,55 @@ public class SchemaDocumentExportTests
 {
     [TestCase(SchemaDocumentFormat.Json)]
     [TestCase(SchemaDocumentFormat.Yaml)]
+    public void Export_RoundTrip_PreservesTagsIndependentlyOfAnnotations(SchemaDocumentFormat format)
+    {
+        var annotations = new Dictionary<string, string> { ["pii"] = "annotation" };
+        var email = new VarLengthColumn("email", DbType.String, 256)
+        {
+            Tags = new Dictionary<string, string> { ["pii"] = "true", ["PII"] = "" },
+            Annotations = annotations
+        };
+        var table = new Table(new DatabaseObjectName("customers"), [email, new("id", DbType.Int32)], null, null, null, annotations)
+        {
+            Tags = new Dictionary<string, string> { ["pii"] = "false" }
+        };
+        using var stream = new MemoryStream();
+        new SchemaDocumentWriter().Write(stream, new SchemaDocumentExporter().Map(new Schema([table])), format);
+
+        if (format == SchemaDocumentFormat.Json)
+        {
+            var path = Path.Combine(TestContext.CurrentContext.TestDirectory, "schemas", "schema-document", "v1", "schema.json");
+            var specification = JsonSchema.FromText(File.ReadAllText(path), new BuildOptions { SchemaRegistry = new SchemaRegistry() });
+            using var json = JsonDocument.Parse(stream.ToArray());
+            var validation = specification.Evaluate(json.RootElement);
+            Assert.That(validation.IsValid, Is.True, JsonSerializer.Serialize(validation));
+        }
+
+        stream.Position = 0;
+        var restored = new SchemaDocumentMapper().Map(new SchemaDocumentReader().Read(stream, format)).Tables.Values.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(restored.Tags["pii"], Is.EqualTo("false"));
+            Assert.That(restored.Annotations["pii"], Is.EqualTo("annotation"));
+            Assert.That(restored.Columns["email"].Tags["pii"], Is.EqualTo("true"));
+            Assert.That(restored.Columns["email"].Tags["PII"], Is.Empty);
+            Assert.That(restored.Columns["email"].Annotations["pii"], Is.EqualTo("annotation"));
+            Assert.That(restored.Columns["id"].Tags, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void TagValidationReportsTheInvalidTableAndColumnFields()
+    {
+        var document = new SchemaDocumentExporter().Map(new Schema([new Table("customers", [new("id", DbType.Int32)])]));
+        document.Tables[0].Tags = new() { [" "] = "true" };
+        document.Tables[0].Columns[0].Tags = new() { ["pii"] = null! };
+        var diagnostics = new SchemaDocumentValidator().Validate(document);
+        Assert.That(diagnostics.Select(item => item.Path), Is.EquivalentTo(new[] { "tables[0].tags", "tables[0].columns[0].tags" }));
+    }
+
+    [TestCase(SchemaDocumentFormat.Json)]
+    [TestCase(SchemaDocumentFormat.Yaml)]
     public void Export_RoundTrip_PreservesTypedCheckPredicate(SchemaDocumentFormat format)
     {
         const string sql = """(("EndDate" >= "StartDate") OR ("EndDate" IS NULL))""";

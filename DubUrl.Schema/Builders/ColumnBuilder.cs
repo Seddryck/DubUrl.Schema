@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.ComponentModel;
@@ -22,6 +22,7 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
     private ColumnDefaultExpression? DefaultExpression { get; set; }
     private string? Description { get; set; }
     private IReadOnlyDictionary<string, string> Annotations { get; set; } = ImmutableSortedDictionary<string, string>.Empty;
+    private IReadOnlyDictionary<string, string> Tags { get; set; } = SchemaTags.Empty;
     private NativeDatabaseType? NativeType { get; set; }
     private NativeTypeFallback NativeTypeFallback { get; set; }
     private ColumnGeneration? Generation { get; set; }
@@ -136,6 +137,12 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
         return this;
     }
 
+    IColumnConstraintBuilder IColumnConstraintBuilder.WithTags(IReadOnlyDictionary<string, string> tags)
+    {
+        Tags = SchemaTags.Snapshot(tags);
+        return this;
+    }
+
     IColumnConstraintBuilder IColumnConstraintBuilder.WithNativeType(NativeDatabaseType nativeType, NativeTypeFallback fallback)
     {
         NativeType = nativeType ?? throw new ArgumentNullException(nameof(nativeType));
@@ -157,22 +164,22 @@ public class ColumnBuilder : IColumnName, IColumnTypeBuilder, IColumnNumericBuil
             if (Generation is IdentityColumnGeneration || DefaultExpression is not null)
                 throw new InvalidOperationException("A structured type cannot use identity generation or a typed default expression.");
             return new Column(Name, StructuredType, DefaultValue, constraints, Description, Generation as GeneratedColumnGeneration)
-            { Annotations = Annotations };
+            { Annotations = Annotations, Tags = Tags };
         }
 
         if (Scale.HasValue && Length.HasValue)
         {
             return new NumericColumn(Name, Type, Length.Value, Scale.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
-            { Annotations = Annotations };
+            { Annotations = Annotations, Tags = Tags };
         }
 
         if (Length.HasValue)
         {
             return new VarLengthColumn(Name, Type, Length.Value, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
-            { Annotations = Annotations };
+            { Annotations = Annotations, Tags = Tags };
         }
 
         return new Column(Name, Type, DefaultValue, constraints, Description, NativeType, NativeTypeFallback, Generation, DefaultExpression)
-        { Annotations = Annotations };
+        { Annotations = Annotations, Tags = Tags };
     }
 }

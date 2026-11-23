@@ -4,6 +4,14 @@ Provider-neutral database schema models, fluent builders, SQL rendering, discove
 
 The user documentation is published as part of the [single DubUrl website](https://seddryck.github.io/DubUrl/docs/schemas/).
 
+## Table and column tags
+
+Use `WithTags` on table and column builders or set the `Tags` property on the schema model. In v1 JSON and YAML, use the optional `tags` map. For example, `tags: { pii: "true" }` assigns a string value. Tag keys are case-sensitive, and tags and annotations can use the same key independently.
+
+Providers implement `ISchemaTagMetadataReader` to discover tags. Inspection reports `TableTagCoverage` and `ColumnTagCoverage` separately. A provider that supports neither scope leaves both as `Unsupported`. Inaccessible or unrepresentable tags make the inspection incomplete.
+
+For deployment, providers implement `ITableTagSqlRenderer` and `IColumnTagSqlRenderer` for the scopes they support. `SchemaScriptRenderer` reports these capabilities separately and rejects declarations for unsupported scopes during planning.
+
 ## Table hierarchies
 
 Use `WithHierarchy(new Hierarchy("id"))` on a table builder with a single-column scalar primary key. In schema documents, set `hierarchy: { nodeKey: id }` on the table. The declaration requires database enforcement of parent existence by default.

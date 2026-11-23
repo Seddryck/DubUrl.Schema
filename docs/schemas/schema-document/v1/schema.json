@@ -32,6 +32,12 @@
     }
   },
   "$defs": {
+    "tags": {
+      "description": "Optional case-sensitive tags with string values.",
+      "type": "object",
+      "propertyNames": { "pattern": "\\S" },
+      "additionalProperties": { "type": "string" }
+    },
     "logicalType": {
       "description": "A stable DubUrl logical type identifier.",
       "type": "string",
@@ -67,6 +73,7 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "tags": { "$ref": "#/$defs/tags" },
         "columns": {
           "description": "Columns in declaration and rendering order.",
           "type": "array",
@@ -133,6 +140,7 @@
           "type": "object",
           "additionalProperties": { "type": "string" }
         },
+        "tags": { "$ref": "#/$defs/tags" },
         "nativeType": { "description": "An optional provider-native type override and fallback policy.", "$ref": "#/$defs/nativeType" },
         "identity": { "description": "Identity or auto-increment generation settings.", "$ref": "#/$defs/identityColumn" },
         "generated": { "description": "Expression-based generated column settings.", "$ref": "#/$defs/generatedColumn" },

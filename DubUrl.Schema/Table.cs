@@ -15,6 +15,17 @@ public class Table
     public ConstraintCollection Constraints { get; }
     public string? Description { get; }
     public IReadOnlyDictionary<string, string> Annotations { get; }
+
+    private readonly IReadOnlyDictionary<string, string> tags = SchemaTags.Empty;
+
+    /// <summary>Gets the table's case-sensitive string tags.</summary>
+    /// <value>An immutable snapshot, empty by default.</value>
+    public IReadOnlyDictionary<string, string> Tags
+    {
+        get => tags;
+        init => tags = SchemaTags.Snapshot(value);
+    }
+
     public Hierarchy? Hierarchy { get; }
     public DubUrl.Querying.Dialects.TablePhysicalOptions? PhysicalOptions { get; }
 

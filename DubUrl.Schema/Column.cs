@@ -32,6 +32,16 @@ public class Column
                 throw new ArgumentException("Column annotations require string values.", nameof(value));
         }
     }
+    private readonly IReadOnlyDictionary<string, string> tags = SchemaTags.Empty;
+
+    /// <summary>Gets the column's case-sensitive string tags.</summary>
+    /// <value>An immutable snapshot, empty by default.</value>
+    public IReadOnlyDictionary<string, string> Tags
+    {
+        get => tags;
+        init => tags = SchemaTags.Snapshot(value);
+    }
+
     public NativeDatabaseType? NativeType { get; }
     public StructuredColumnType? StructuredType { get; }
     public NativeTypeFallback NativeTypeFallback { get; }
