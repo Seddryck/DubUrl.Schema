@@ -79,7 +79,8 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
         var hierarchy = document.Hierarchy is { } declaration
             ? new Hierarchy(declaration.NodeKey!, declaration.RequireParentExists ?? true, declaration.ParentColumnName ?? "parent_id")
             : null;
-        return new Table(MapIdentity(document.Identity), columns, constraints.ToArray(), document.Description, null, document.Annotations, hierarchy);
+        return new Table(MapIdentity(document.Identity), columns, constraints.ToArray(), document.Description, null, document.Annotations, hierarchy)
+        { Tags = document.Tags ?? SchemaTags.Empty };
     }
 
     private Column MapColumn(ColumnDocument document)
@@ -94,22 +95,23 @@ public sealed class SchemaDocumentMapper : ISchemaDocumentMapper
             : NativeTypeFallback.Error;
         var generation = MapGeneration(document);
         var annotations = document.Annotations ?? [];
+        var tags = document.Tags ?? SchemaTags.Empty;
 
         return document switch
         {
             { StructuredType: not null } => new Column(document.Name!,
                 StructuredTypeMapping.Map(document, "column"), defaultValue, constraints, document.Description,
-                generation as GeneratedColumnGeneration) { Annotations = annotations },
+                generation as GeneratedColumnGeneration) { Annotations = annotations, Tags = tags },
             { Length: not null } => new VarLengthColumn(
                 document.Name!, type, document.Length.Value, defaultValue, constraints,
-                document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations },
+                document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations, Tags = tags },
             { Precision: not null } => new NumericColumn(
                 document.Name!, type, document.Precision.Value, document.Scale ?? 0, defaultValue,
-                constraints, document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations },
+                constraints, document.Description, nativeType, fallback, generation, defaultExpression) { Annotations = annotations, Tags = tags },
             _ => new Column(
                 document.Name!, type, defaultValue, constraints, document.Description,
                 nativeType, fallback, generation, defaultExpression)
-            { Annotations = annotations, FractionalSecondsPrecision = document.FractionalSecondsPrecision }
+            { Annotations = annotations, Tags = tags, FractionalSecondsPrecision = document.FractionalSecondsPrecision }
         };
     }
 

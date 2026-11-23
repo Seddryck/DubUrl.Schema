@@ -23,6 +23,7 @@ public sealed class TableDocument
     public DatabaseObjectNameDocument Identity { get; set; } = new();
     public string? Description { get; set; }
     public Dictionary<string, string>? Annotations { get; set; }
+    public Dictionary<string, string>? Tags { get; set; }
     public List<ColumnDocument> Columns { get; set; } = [];
     public PrimaryKeyDocument? PrimaryKey { get; set; }
     public HierarchyDocument? Hierarchy { get; set; }
@@ -53,6 +54,7 @@ public sealed class ColumnDocument
     public DefaultExpressionDocument? DefaultExpression { get; set; }
     public string? Description { get; set; }
     public Dictionary<string, string>? Annotations { get; set; }
+    public Dictionary<string, string>? Tags { get; set; }
     public NativeTypeDocument? NativeType { get; set; }
     public IdentityColumnDocument? Identity { get; set; }
     public GeneratedColumnDocument? Generated { get; set; }

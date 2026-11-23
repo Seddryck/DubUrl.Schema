@@ -64,6 +64,7 @@ public sealed class SchemaDocumentExporter
             Identity = Name(table.Identity),
             Description = table.Description,
             Annotations = new Dictionary<string, string>(table.Annotations, StringComparer.Ordinal),
+            Tags = table.Tags.Count == 0 ? null : new Dictionary<string, string>(table.Tags, StringComparer.Ordinal),
             Columns = table.Columns.Values.Select(Column).ToList(),
             Hierarchy = table.Hierarchy is { } hierarchy
                 ? new() { NodeKey = hierarchy.NodeKey, ParentColumnName = hierarchy.ParentColumnName, RequireParentExists = hierarchy.RequireParentExists }
@@ -139,6 +140,7 @@ public sealed class SchemaDocumentExporter
             StructuredType = column.StructuredType is { } structured ? StructuredTypeMapping.Export(structured) : null,
             Description = column.Description,
             Annotations = column.Annotations.Count == 0 ? null : new Dictionary<string, string>(column.Annotations, StringComparer.Ordinal),
+            Tags = column.Tags.Count == 0 ? null : new Dictionary<string, string>(column.Tags, StringComparer.Ordinal),
             Nullable = !column.Constraints.OfType<NotNullableConstraint>().Any(),
             Default = ColumnDefaultLiteral(column),
             DefaultExpression = column.DefaultExpression is null ? null : DefaultExpressionMapping.Export(column.DefaultExpression),

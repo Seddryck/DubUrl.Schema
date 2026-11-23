@@ -231,6 +231,7 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                 "Table annotations require string values.", $"{tablePath}.annotations"));
         }
+        ValidateTags(table.Tags, $"{tablePath}.tags", diagnostics);
         var columns = table.Columns ?? [];
         var columnLookup = new Dictionary<string, ColumnDocument>(StringComparer.Ordinal);
         for (var columnIndex = 0; columnIndex < columns.Count; columnIndex++)
@@ -382,8 +383,15 @@ public sealed partial class SchemaDocumentValidator : ISchemaDocumentValidator
             diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue,
                 "Column annotations require string values.", $"{path}.annotations"));
         }
+        ValidateTags(column.Tags, $"{path}.tags", diagnostics);
         RunRules(new ColumnValidationContext(column, path, columns, ValueConverter), rules.ColumnRules, diagnostics);
         ValidateChecks(column.Checks ?? [], $"{path}.checks", columns, diagnostics);
+    }
+
+    private static void ValidateTags(Dictionary<string, string>? tags, string path, List<SchemaDocumentDiagnostic> diagnostics)
+    {
+        if (tags is not null && tags.Any(tag => !SchemaTags.IsValid(tag)))
+            diagnostics.Add(Error(SchemaDocumentDiagnosticCodes.RequiredValue, "Tags require nonblank names and string values.", path));
     }
 
     private static void ValidateNativeType(
