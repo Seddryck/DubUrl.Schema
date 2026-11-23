@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -110,6 +110,8 @@ public interface IColumnConstraintBuilder : IColumnBuilder
     IColumnConstraintBuilder WithDescription(string? description);
     IColumnConstraintBuilder WithAnnotations(IReadOnlyDictionary<string, string> annotations)
         => throw new NotSupportedException("This column builder does not support annotations.");
+    IColumnConstraintBuilder WithTags(IReadOnlyDictionary<string, string> tags)
+        => throw new NotSupportedException("This column builder does not support tags.");
     IColumnConstraintBuilder WithNativeType(NativeDatabaseType nativeType, NativeTypeFallback fallback = NativeTypeFallback.Error);
 }
 
