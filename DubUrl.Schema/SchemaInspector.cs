@@ -9,6 +9,14 @@ namespace DubUrl.Schema;
 public sealed record SchemaInspectionResult(Schema? Schema, bool IsComplete, bool IsSuccess,
     IReadOnlyDictionary<SchemaFeature, MetadataCoverage> Coverage, IReadOnlyList<DiscoveryDiagnostic> Diagnostics)
 {
+    /// <summary>Gets the coverage of table tags.</summary>
+    /// <value>Unsupported when the provider does not implement table tag discovery.</value>
+    public MetadataCoverage TableTagCoverage { get; init; } = MetadataCoverage.Unsupported;
+
+    /// <summary>Gets the coverage of column tags.</summary>
+    /// <value>Unsupported when the provider does not implement column tag discovery.</value>
+    public MetadataCoverage ColumnTagCoverage { get; init; } = MetadataCoverage.Unsupported;
+
     public IReadOnlyList<MetadataView> ViewInventory { get; init; } = [];
     /// <summary>Explicit declarations recovered alongside the physical schema.</summary>
     /// <value>Table identities and their recorded logical hierarchy declarations.</value>
@@ -54,6 +62,7 @@ public sealed class SchemaInspector
             throw new ArgumentException("A borrowed connection must already be open.", nameof(borrowed));
         SchemaMetadata metadata;
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredColumns = null;
+        SchemaTagMetadata? tags = null;
         try
         {
             if (reader is IStructuredColumnMetadataReader structuredReader)
@@ -65,13 +74,15 @@ public sealed class SchemaInspector
             {
                 metadata = await reader.ReadAsync(borrowed, readOptions, cancellationToken).ConfigureAwait(false);
             }
+            if (reader is ISchemaTagMetadataReader tagReader)
+                tags = await tagReader.ReadTagsAsync(borrowed, readOptions, metadata, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception exception) when (exception is DbException or InvalidOperationException or TimeoutException or NotSupportedException)
         { return Failure("SDI002", MetadataCoverage.Inaccessible, "Database metadata could not be accessed."); }
         cancellationToken.ThrowIfCancellationRequested();
         return Map(metadata, options, cancellationToken, reader as IUniqueConstraintMetadataReader, structuredColumns,
-            reader as IHierarchyMetadataReader, reader as ITemporalColumnMetadataReader);
+            reader as IHierarchyMetadataReader, reader as ITemporalColumnMetadataReader, tags);
     }
 
     private static DiscoveryOptions IncludeDefaultAnnotations(DiscoveryOptions options, ISchemaMetadataReader reader)
@@ -107,11 +118,11 @@ public sealed class SchemaInspector
     private static SchemaInspectionResult Map(SchemaMetadata metadata, DiscoveryOptions? options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
-        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata)
+        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata, SchemaTagMetadata? tags = null)
     {
         ArgumentNullException.ThrowIfNull(metadata);
         cancellationToken.ThrowIfCancellationRequested();
-        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata, temporalMetadata); }
+        try { return MapCore(metadata, options ?? new(), cancellationToken, uniqueMetadata, structuredMetadata, hierarchyMetadata, temporalMetadata, tags); }
         catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or KeyNotFoundException or NotSupportedException)
         { return Failure("SDI007", MetadataCoverage.Unrepresentable, "Metadata could not be mapped into a valid schema."); }
     }
@@ -119,7 +130,7 @@ public sealed class SchemaInspector
     private static SchemaInspectionResult MapCore(SchemaMetadata metadata, DiscoveryOptions options,
         CancellationToken cancellationToken, IUniqueConstraintMetadataReader? uniqueMetadata,
         IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
-        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata)
+        IHierarchyMetadataReader? hierarchyMetadata, ITemporalColumnMetadataReader? temporalMetadata, SchemaTagMetadata? tags)
     {
         var diagnostics = new List<DiscoveryDiagnostic>();
         var coverage = GetRequestedCoverage(metadata, options, diagnostics);
@@ -135,7 +146,7 @@ public sealed class SchemaInspector
             {
                 var unique = table.UniqueConstraints.OrderBy(key => key.Name, StringComparer.Ordinal)
                     .Select(key => (Key: key, Metadata: uniqueMetadata?.GetUniqueConstraintMetadata(table, key))).ToArray();
-                var mapped = MapTable(table, selected, diagnostics, unique, options, structuredMetadata, temporalMetadata);
+                var mapped = MapTable(table, selected, diagnostics, unique, options, structuredMetadata, temporalMetadata, tags);
                 if (mapped is null)
                 {
                     ApplyDiagnosticCoverage(coverage, diagnostics);
@@ -153,7 +164,7 @@ public sealed class SchemaInspector
             }
         }
         var views = MapViews(metadata, options, selected, diagnostics);
-        return CompleteResult(metadata, options, diagnostics, coverage, tables, indexes, views, hierarchies);
+        return CompleteResult(metadata, options, diagnostics, coverage, tables, indexes, views, hierarchies, tags);
     }
 
     private static Dictionary<SchemaFeature, MetadataCoverage> GetRequestedCoverage(SchemaMetadata metadata,
@@ -168,15 +179,20 @@ public sealed class SchemaInspector
 
     private static SchemaInspectionResult CompleteResult(SchemaMetadata metadata, DiscoveryOptions options,
         List<DiscoveryDiagnostic> diagnostics, Dictionary<SchemaFeature, MetadataCoverage> coverage,
-        List<Table> tables, List<Index> indexes, List<View> views, Dictionary<DatabaseObjectName, Hierarchy> hierarchies)
+        List<Table> tables, List<Index> indexes, List<View> views, Dictionary<DatabaseObjectName, Hierarchy> hierarchies,
+        SchemaTagMetadata? tags)
     {
         try
         {
             var schema = new Schema(tables.ToArray(), indexes.ToArray(), views.ToArray());
             ApplyDiagnosticCoverage(coverage, diagnostics);
-            var complete = diagnostics.Count == 0;
+            var tableTagCoverage = tags?.TableCoverage ?? MetadataCoverage.Unsupported;
+            var columnTagCoverage = tags?.ColumnCoverage ?? MetadataCoverage.Unsupported;
+            var complete = diagnostics.Count == 0 && IsTagCoverageComplete(tableTagCoverage) && IsTagCoverageComplete(columnTagCoverage);
             return new(schema, complete, complete || options.AllowPartial, coverage, diagnostics)
             {
+                TableTagCoverage = tableTagCoverage,
+                ColumnTagCoverage = columnTagCoverage,
                 ViewInventory = metadata.Views.Where(view => options.Tables.Count == 0 && MatchesScope(options, view.Identity)).ToArray(),
                 Hierarchies = new System.Collections.ObjectModel.ReadOnlyDictionary<DatabaseObjectName, Hierarchy>(hierarchies)
             };
@@ -187,6 +203,9 @@ public sealed class SchemaInspector
             MetadataCoverage.Unrepresentable, "The discovered relationships do not form a valid schema.")).ToArray());
         }
     }
+
+    private static bool IsTagCoverageComplete(MetadataCoverage coverage)
+        => coverage is MetadataCoverage.Unsupported or MetadataCoverage.Available or MetadataCoverage.Absent;
 
     private static Dictionary<MetadataName, MetadataTable> SelectTables(SchemaMetadata metadata, DiscoveryOptions options, List<DiscoveryDiagnostic> diagnostics)
     {
@@ -216,7 +235,7 @@ public sealed class SchemaInspector
     private static Table? MapTable(MetadataTable table, Dictionary<MetadataName, MetadataTable> selected,
         List<DiscoveryDiagnostic> diagnostics, (MetadataKey Key, UniqueConstraintMetadata? Metadata)[] uniqueKeys,
         DiscoveryOptions options, IReadOnlyDictionary<StructuredColumnIdentity, StructuredColumnMetadata>? structuredMetadata,
-        ITemporalColumnMetadataReader? temporalMetadata)
+        ITemporalColumnMetadataReader? temporalMetadata, SchemaTagMetadata? tags)
     {
         if (table.Columns.Count == 0) throw new NotSupportedException();
         var inspectDefaults = options.Features.Contains(SchemaFeature.Defaults);
@@ -224,9 +243,11 @@ public sealed class SchemaInspector
         foreach (var column in table.Columns.OrderBy(column => column.Ordinal))
         {
             var structured = structuredMetadata?.GetValueOrDefault(new StructuredColumnIdentity(table.Identity, column.Name));
+            var columnTags = tags?.Columns.GetValueOrDefault((table.Identity, column.Name)) ?? SchemaTags.Empty;
             var mapped = structured is null
-                ? MapColumn(table.Identity, column, diagnostics, inspectDefaults, temporalMetadata?.GetFractionalSecondsPrecision(column))
-                : MapStructuredColumn(table.Identity, column, structured, diagnostics, inspectDefaults);
+                ? MapColumn(table.Identity, column, diagnostics, inspectDefaults,
+                    temporalMetadata?.GetFractionalSecondsPrecision(column), columnTags)
+                : MapStructuredColumn(table.Identity, column, structured, diagnostics, inspectDefaults, columnTags);
             if (mapped is null) return null;
             columns.Add(mapped);
         }
@@ -243,7 +264,8 @@ public sealed class SchemaInspector
             unique.Key.Columns.Select(name => byName[name]).ToArray(),
             unique.Key.Name, unique.Metadata?.NullPolicy ?? UniqueNullPolicy.Native)));
 
-        return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment, null, table.Annotations);
+        return new Table(Name(table.Identity), columns.ToArray(), constraints.ToArray(), table.Comment, null, table.Annotations)
+        { Tags = tags?.Tables.GetValueOrDefault(table.Identity) ?? SchemaTags.Empty };
     }
 
     private static Constraint MapCheckPredicate(MetadataCheckPredicate check, bool preferTyped)
@@ -363,11 +385,11 @@ public sealed class SchemaInspector
     }
 
     private static Column MapColumn(MetadataName table, MetadataColumn column,
-        List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults, int? fractionalSecondsPrecision)
+        List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults, int? fractionalSecondsPrecision, IReadOnlyDictionary<string, string> tags)
     {
         if (column.Default is ColumnDefaultExpression expression && inspectDefaults)
         {
-            try { return MapColumn(column, null, expression, fractionalSecondsPrecision); }
+            try { return MapColumn(column, null, expression, fractionalSecondsPrecision, tags); }
             catch (ArgumentException)
             {
                 diagnostics.Add(new("SDI011", SchemaFeature.Defaults, MetadataCoverage.Unrepresentable,
@@ -381,11 +403,11 @@ public sealed class SchemaInspector
         }
 
         return MapColumn(column, column.Default is ColumnDefaultExpression or MetadataExpression ? null : column.Default,
-            null, fractionalSecondsPrecision);
+            null, fractionalSecondsPrecision, tags);
     }
 
     private static Column? MapStructuredColumn(MetadataName table, MetadataColumn column,
-        StructuredColumnMetadata metadata, List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults)
+        StructuredColumnMetadata metadata, List<DiscoveryDiagnostic> diagnostics, bool inspectDefaults, IReadOnlyDictionary<string, string> tags)
     {
         var label = $"The structured type for column '{column.Name}'";
         if (metadata.Type is not { } type)
@@ -415,11 +437,11 @@ public sealed class SchemaInspector
         return new Column(column.Name, type, sqlNull ? DBNull.Value : null,
             [column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint()],
             column.Comment, MapGeneration(column) as GeneratedColumnGeneration)
-        { Annotations = column.Annotations };
+        { Annotations = column.Annotations, Tags = tags };
     }
 
     private static Column MapColumn(MetadataColumn column, object? defaultValue, ColumnDefaultExpression? expression,
-        int? fractionalSecondsPrecision)
+        int? fractionalSecondsPrecision, IReadOnlyDictionary<string, string> tags)
     {
         if (column.Type is null || column.Nullable is null) throw new NotSupportedException();
         var constraints = new IConstraint[] { column.Nullable.Value ? new NullableConstraint() : new NotNullableConstraint() };
@@ -430,17 +452,17 @@ public sealed class SchemaInspector
         {
             return new Column(column.Name, type, defaultValue, constraints, column.Comment, generation: generation,
                 defaultExpression: expression)
-            { Annotations = column.Annotations, FractionalSecondsPrecision = fractionalSecondsPrecision };
+            { Annotations = column.Annotations, Tags = tags, FractionalSecondsPrecision = fractionalSecondsPrecision };
         }
 
         return column.Length is { } length
             ? new VarLengthColumn(column.Name, type, length, defaultValue, constraints, column.Comment, native,
-                generation: generation, defaultExpression: expression) { Annotations = column.Annotations }
+                generation: generation, defaultExpression: expression) { Annotations = column.Annotations, Tags = tags }
             : column.Precision is { } precision
                 ? new NumericColumn(column.Name, type, precision, column.Scale ?? 0, defaultValue, constraints, column.Comment, native,
-                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations }
+                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations, Tags = tags }
                 : new Column(column.Name, type, defaultValue, constraints, column.Comment, native,
-                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations };
+                    generation: generation, defaultExpression: expression) { Annotations = column.Annotations, Tags = tags };
     }
 
     private static Expression Expression(MetadataExpression expression) => expression.Kind switch

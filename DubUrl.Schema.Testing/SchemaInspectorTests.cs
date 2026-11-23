@@ -9,6 +9,57 @@ namespace DubUrl.Schema.Testing;
 
 public class SchemaInspectorTests
 {
+    [TestCase(MetadataCoverage.Available, MetadataCoverage.Available, false, true)]
+    [TestCase(MetadataCoverage.Unsupported, MetadataCoverage.Available, false, true)]
+    [TestCase(MetadataCoverage.Inaccessible, MetadataCoverage.Available, false, false)]
+    [TestCase(MetadataCoverage.Inaccessible, MetadataCoverage.Available, true, true)]
+    public async Task Inspect_MapsTagsWithIndependentCoverage(MetadataCoverage tableCoverage, MetadataCoverage columnCoverage,
+        bool allowPartial, bool isSuccess)
+    {
+        var features = new[] { SchemaFeature.Tables, SchemaFeature.Columns };
+        var options = new DiscoveryOptions { Features = features, AllowPartial = allowPartial };
+        var annotations = new Dictionary<string, string> { ["pii"] = "annotation" };
+        var column = new MetadataColumn("email", 1, DbType.String, true) { Length = 256, Annotations = annotations };
+        var table = new MetadataTable(new("customers"), [column]) { Annotations = annotations };
+        var metadata = new SchemaMetadata([table], features.ToDictionary(feature => feature, _ => MetadataCoverage.Available), []);
+        var tableTags = new Dictionary<string, string> { ["pii"] = "false" };
+        var columnTags = new Dictionary<string, string> { ["pii"] = "true" };
+
+        var reader = new Mock<ISchemaTagMetadataReader>();
+        var connection = new Mock<System.Data.Common.DbConnection>();
+        connection.SetupGet(value => value.State).Returns(ConnectionState.Open);
+        reader.Setup(value => value.ReadAsync(connection.Object, options, default)).ReturnsAsync(metadata);
+        reader.Setup(value => value.ReadTagsAsync(connection.Object, options, metadata, default)).ReturnsAsync(new SchemaTagMetadata
+        {
+            TableCoverage = tableCoverage,
+            ColumnCoverage = columnCoverage,
+            Tables = tableCoverage == MetadataCoverage.Available
+                ? new Dictionary<MetadataName, IReadOnlyDictionary<string, string>> { [table.Identity] = tableTags }
+                : new Dictionary<MetadataName, IReadOnlyDictionary<string, string>>(),
+            Columns = new Dictionary<(MetadataName, string), IReadOnlyDictionary<string, string>>
+            {
+                [(table.Identity, column.Name)] = columnTags
+            }
+        });
+
+        var result = await new SchemaInspector().InspectAsync(connection.Object, reader.Object, options);
+        tableTags.Clear();
+        columnTags.Clear();
+
+        var mapped = result.Schema!.Tables.Values.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsComplete, Is.EqualTo(tableCoverage != MetadataCoverage.Inaccessible));
+            Assert.That(result.IsSuccess, Is.EqualTo(isSuccess));
+            Assert.That(result.TableTagCoverage, Is.EqualTo(tableCoverage));
+            Assert.That(result.ColumnTagCoverage, Is.EqualTo(columnCoverage));
+            Assert.That(mapped.Tags.GetValueOrDefault("pii"), Is.EqualTo(tableCoverage == MetadataCoverage.Available ? "false" : null));
+            Assert.That(mapped.Annotations["pii"], Is.EqualTo("annotation"));
+            Assert.That(mapped.Columns["email"].Tags["pii"], Is.EqualTo("true"));
+            Assert.That(mapped.Columns["email"].Annotations["pii"], Is.EqualTo("annotation"));
+        });
+    }
+
     [TestCase(true, false)]
     [TestCase(false, true)]
     [TestCase(true, true)]

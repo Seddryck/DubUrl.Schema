@@ -25,6 +25,8 @@ public class SchemaScriptRenderer
     /// Whether descriptions can be rendered by this implementation.
     /// </value>
     public bool SupportsComments { get; }
+    public bool SupportsTableTags => Dialect.SchemaSqlRenderer is ITableTagSqlRenderer;
+    public bool SupportsColumnTags => Dialect.SchemaSqlRenderer is IColumnTagSqlRenderer;
     public bool EngineSupportsComments => (Dialect.Capabilities ?? DialectCapabilities.Default).SupportsComments;
 
     public SchemaScriptRenderer(IDialect dialect, SchemaCreationOptions options = SchemaCreationOptions.None, NativeTypeRegistry? nativeTypes = null)
@@ -84,7 +86,8 @@ public class SchemaScriptRenderer
 
     private static bool RequiresCommandPlanning(Table table)
         => table.Hierarchy is not null || table.Annotations.Count > 0
-            || table.Columns.Values.Any(column => column.Annotations.Count > 0);
+            || table.Tags.Count > 0
+            || table.Columns.Values.Any(column => column.Annotations.Count > 0 || column.Tags.Count > 0);
 
     /// <summary>Renders trusted command boundaries before any database connection is opened.</summary>
     /// <remarks>Text export remains available through Render; this path never parses exported SQL.</remarks>
@@ -175,7 +178,9 @@ public class SchemaScriptRenderer
                 PlanProviderChecks = provider is not null
             }),
                 SchemaSqlOperation.CreateTable, table.Identity.ToString()));
-            AddAnnotationCommands(commands, schema.Tables[table.Identity.Key]);
+            var source = schema.Tables[table.Identity.Key];
+            AddAnnotationCommands(commands, source);
+            AddTagCommands(commands, source);
             if (provider is not null)
                 commands.AddRange(provider.PlanTableChecks(Dialect, table.Identity, CreateSchemaRenderer.RenderTableChecks(table, Dialect)));
             foreach (var index in table.ExplicitUniqueIndexes)
@@ -202,6 +207,24 @@ public class SchemaScriptRenderer
         if (Dialect.SchemaSqlRenderer is not IColumnAnnotationSqlRenderer columnRenderer)
             throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render column annotations for table '{table.Identity}'.");
         commands.AddRange(columnRenderer.PlanColumnAnnotations(Dialect, table.Identity, annotatedColumns));
+    }
+
+    private void AddTagCommands(List<SchemaSqlCommand> commands, Table table)
+    {
+        if (table.Tags.Count > 0)
+        {
+            if (Dialect.SchemaSqlRenderer is not ITableTagSqlRenderer renderer)
+                throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render tags for table '{table.Identity}'.");
+            commands.AddRange(renderer.PlanTableTags(Dialect, table.Identity, table.Tags));
+        }
+
+        var taggedColumns = table.Columns.Values.Where(column => column.Tags.Count > 0)
+            .ToDictionary(column => column.Name, column => column.Tags, StringComparer.Ordinal);
+        if (taggedColumns.Count == 0)
+            return;
+        if (Dialect.SchemaSqlRenderer is not IColumnTagSqlRenderer columnRenderer)
+            throw new NotSupportedException($"Dialect '{Dialect.GetType().Name}' cannot render column tags for table '{table.Identity}'.");
+        commands.AddRange(columnRenderer.PlanColumnTags(Dialect, table.Identity, taggedColumns));
     }
 
     private void AddCommentCommands(List<SchemaSqlCommand> commands, IEnumerable<TableViewModel> tables)

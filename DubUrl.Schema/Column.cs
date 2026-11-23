@@ -35,6 +35,7 @@ public class Column
     private readonly IReadOnlyDictionary<string, string> tags = SchemaTags.Empty;
 
     /// <summary>Gets the column's case-sensitive string tags.</summary>
+    /// <value>An immutable snapshot, empty by default.</value>
     public IReadOnlyDictionary<string, string> Tags
     {
         get => tags;

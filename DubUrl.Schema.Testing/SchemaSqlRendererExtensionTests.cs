@@ -26,6 +26,51 @@ public class SchemaSqlRendererExtensionTests
     }
 
     [Test]
+    public void TagsUseIndependentProviderHooksAndPreserveAnnotations()
+    {
+        var tags = new Dictionary<string, string> { ["pii"] = "true" };
+        var table = new TableBuilder().WithName("customers")
+            .WithColumns(columns => columns.Add(builder => builder.WithName("email").WithType(DbType.String).WithLength(256).WithTags(tags)))
+            .WithAnnotations(new Dictionary<string, string> { ["pii"] = "annotation" })
+            .WithTags(tags).Build();
+        var columnsOnly = new Schema([new Table("customers", [table.Columns["email"]])]);
+        var tagsOnly = new Schema([new Table("customers", [new("id", DbType.Int32)]) { Tags = tags }]);
+        tags.Clear();
+
+        var unsupported = new SchemaScriptRenderer(new ProviderDialect(source, StandardSchemaSqlRenderer.Instance));
+        Assert.That(() => unsupported.Render(tagsOnly), Throws.TypeOf<NotSupportedException>().With.Message.Contains("tags for table"));
+        Assert.That(() => unsupported.Plan(columnsOnly), Throws.TypeOf<NotSupportedException>().With.Message.Contains("column tags"));
+
+        var renderer = new SchemaScriptRenderer(new ProviderDialect(source, new TagRenderer()));
+        var schema = new Schema([table]);
+        var plan = renderer.Plan(schema);
+        Assert.Multiple(() =>
+        {
+            Assert.That(renderer.SupportsTableTags, Is.True);
+            Assert.That(renderer.SupportsColumnTags, Is.True);
+            Assert.That(plan[0].Operation, Is.EqualTo(SchemaSqlOperation.CreateTable));
+            Assert.That(plan.Skip(1).Select(command => command.CommandText),
+                Is.EqualTo(new[] { "ANNOTATE customers annotation;", "TAG customers true;", "TAG customers.email true;" }));
+            Assert.That(renderer.Render(schema), Does.Contain("TAG customers.email true;"));
+        });
+    }
+
+    private sealed class TagRenderer : StandardSchemaSqlRenderer, ITableTagSqlRenderer, IColumnTagSqlRenderer, ITableAnnotationSqlRenderer
+    {
+        public IReadOnlyList<SchemaSqlCommand> PlanTableTags(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyDictionary<string, string> tags)
+            => [new($"TAG {table.Name} {tags["pii"]};", SchemaSqlOperation.Comment, table.ToString())];
+
+        public IReadOnlyList<SchemaSqlCommand> PlanColumnTags(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> tags)
+            => [new($"TAG {table.Name}.{tags.Keys.Single()} {tags.Values.Single()["pii"]};", SchemaSqlOperation.Comment, table.ToString())];
+
+        public IReadOnlyList<SchemaSqlCommand> PlanTableAnnotations(IDialect dialect, DatabaseObjectName table,
+            IReadOnlyDictionary<string, string> annotations)
+            => [new($"ANNOTATE {table.Name} {annotations["pii"]};", SchemaSqlOperation.Comment, table.ToString())];
+    }
+
+    [Test]
     public void TableAnnotationsRequireAnExplicitProviderHook()
     {
         var identity = new DatabaseObjectName("annotated");
