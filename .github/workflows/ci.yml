@@ -25,6 +25,7 @@ jobs:
       semver: ${{ steps.gitversion.outputs.semVer }}
       patch: ${{ steps.gitversion.outputs.patch }}
       duburl: ${{ steps.dependency.outputs.duburl }}
+      duburl-core: ${{ steps.dependency.outputs.duburl-core }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,7 +48,11 @@ jobs:
           Import-Module ./build/DubUrlDependency.psm1 -Force
           if ($env:SCHEMA_VERSION -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$') { throw 'Invalid package version.' }
           $duburl = Resolve-DubUrlVersion -Candidate $env:CANDIDATE
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $core = $props.SelectSingleNode('//DubUrlCoreVersion').InnerText
+          if ([version]($duburl.Split('-')[0]) -gt [version]$core) { $core = $duburl }
           "duburl=$duburl" >> $env:GITHUB_OUTPUT
+          "duburl-core=$core" >> $env:GITHUB_OUTPUT
       - name: Test release guards
         run: ./build/Test-ReleaseGuards.ps1
       - uses: ./.github/actions/setup-dotnet
@@ -160,7 +165,7 @@ jobs:
     with:
       providers-ref: 1f07066a4584cc75a93ea8f3a8cb8868ea8948a6
       schema-commit: ${{ github.sha }}
-      duburl-version: ${{ needs.version.outputs.duburl }}
+      duburl-version: ${{ needs.version.outputs.duburl-core }}
 
   docs:
     needs: version
