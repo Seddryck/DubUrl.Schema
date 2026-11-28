@@ -23,6 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\DubUrl.Schema\DubUrl.Schema.csproj" />
+    <PackageReference Include="DubUrl.Adomd" Version="$(DubUrlCoreVersion)" />
     <PackageReference Include="DubUrl.Provider.Teradata" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.Snowflake" Version="$(DubUrlVersion)" />
     <PackageReference Include="DubUrl.Provider.DuckDb" Version="$(DubUrlVersion)" />

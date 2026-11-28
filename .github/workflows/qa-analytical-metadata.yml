@@ -1,0 +1,88 @@
+name: Analytical metadata QA
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/qa-analytical-metadata.yml'
+      - 'Directory.Build.props'
+      - 'DubUrl.Schema/AnalyticalMetadataInspector.cs'
+      - 'DubUrl.Schema.Testing/AnalyticalMetadataInspectorTests.cs'
+      - 'DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj'
+  workflow_dispatch:
+    inputs:
+      duburl_version:
+        description: Published DubUrl and DubUrl.Adomd version. Defaults to the Schema Core baseline.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: analytical-qa-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  inspect:
+    name: Inspect AdventureWorks (${{ matrix.mode }})
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: tabular
+            endpoint-variable: DUBURL_ADOMD_TABULAR_TEST_URL
+            endpoint: ssastabular://localhost/tabular/AdventureWorks
+          - mode: multidim
+            endpoint-variable: DUBURL_ADOMD_MULTIDIM_TEST_URL
+            endpoint: ssasmultidim://localhost/multidim/AdventureWorks
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-dotnet
+      - name: Build against the published DubUrl packages
+        env:
+          REQUESTED_DUBURL_VERSION: ${{ inputs.duburl_version }}
+        run: |
+          [xml]$props = Get-Content Directory.Build.props -Raw
+          $version = if ($env:REQUESTED_DUBURL_VERSION) { $env:REQUESTED_DUBURL_VERSION } else {
+            $props.SelectSingleNode('//DubUrlCoreVersion').InnerText
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw 'Expected a stable DubUrl package version.' }
+          $project = 'DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj'
+          dotnet restore $project -p:TargetFramework=net10.0 "-p:DubUrlCoreVersion=$version" --source https://api.nuget.org/v3/index.json
+          if ($LASTEXITCODE) { throw "Restore failed for DubUrl $version." }
+          $assets = Get-Content 'DubUrl.Schema.Testing/obj/project.assets.json' -Raw | ConvertFrom-Json -AsHashtable
+          foreach ($package in @('DubUrl', 'DubUrl.Adomd')) {
+            if (!$assets.libraries.ContainsKey("$package/$version")) { throw "Restore did not select $package $version." }
+          }
+          dotnet build $project -c Release -f net10.0 --no-restore "-p:DubUrlCoreVersion=$version"
+          if ($LASTEXITCODE) { throw 'Building the analytical consumer tests failed.' }
+      - name: Provision SSAS and restore AdventureWorks
+        uses: Seddryck/DubUrl.Providers/.github/actions/setup-ssas-qa@20d5f745f3b89b6026557c3c794fcb67962a6497
+        with:
+          mode: ${{ matrix.mode }}
+      - name: Run the live analytical consumer test
+        env:
+          SSAS_ENDPOINT_VARIABLE: ${{ matrix.endpoint-variable }}
+          SSAS_ENDPOINT: ${{ matrix.endpoint }}
+        run: |
+          [Environment]::SetEnvironmentVariable($env:SSAS_ENDPOINT_VARIABLE, $env:SSAS_ENDPOINT)
+          dotnet test DubUrl.Schema.Testing/DubUrl.Schema.Testing.csproj -c Release -f net10.0 --no-build --no-restore `
+            --filter FullyQualifiedName~LiveInspectionFindsParentChildObjectsAndMeasures `
+            --logger 'trx;LogFileName=analytical-metadata.trx' --results-directory artifacts/analytical-qa
+          if ($LASTEXITCODE) { throw 'The analytical consumer test failed.' }
+          [xml]$result = Get-Content 'artifacts/analytical-qa/analytical-metadata.trx' -Raw
+          if ([int]$result.TestRun.ResultSummary.Counters.passed -ne 1) { throw 'The live SSAS case did not pass.' }
+      - name: Upload live test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: analytical-metadata-${{ matrix.mode }}
+          path: artifacts/analytical-qa/*.trx
