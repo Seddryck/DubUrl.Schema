@@ -25,6 +25,40 @@ Preflight reports each table's representation, enforcement, and any diagnostic. 
 
 DuckDB generates a nullable `parent_id` with the node key's type and a self-referencing foreign key in `CREATE TABLE`. Each row with a null parent is a root. The foreign key checks that parents exist and permits cycles. Insert a parent before any statement that inserts a child referencing it. Set `requireParentExists` to false to allow storage without enforcement on a target where enforcement is unavailable.
 
+## Inspect Analysis Services metadata
+
+Use the read-only `AnalyticalMetadataInspector` with the ADOMD provider registered for the connection URL.
+The inspector lists visible catalogs and reads objects in the connection's current catalog. The URL
+overload opens and disposes its own connection. The overload taking an already open connection leaves
+its ownership and selected catalog with the caller.
+
+```csharp
+using DubUrl.Discovery;
+using DubUrl.Schema;
+
+var result = await new AnalyticalMetadataInspector().InspectAsync(connectionUrl, cancellationToken);
+var measures = result.Objects.Where(item => item.Id.Kind == AnalyticalObjectKind.Measure);
+var measuresComplete = result.Coverage[AnalyticalFeature.Measures] == AnalyticalCoverage.Available;
+```
+
+The tabular reader supplies tables, columns, measures, and perspectives. On endpoints without modern
+tabular rowsets, it can read table and column inventory from legacy DBSCHEMA rowsets and measures from
+MDSCHEMA. The multidimensional reader supplies cubes, dimensions, hierarchies, levels, measures, and
+perspectives. Parent IDs link objects in their own scope. Use `PerspectiveMembers` for membership,
+`Caption` for display, and `Id` or a reported `UniqueName` for identity. Native rowset IDs are catalog
+or scope specific and can change if objects are recreated.
+
+Check coverage before treating a missing object as a failed assertion. An available collection can be
+empty. Partial, unsupported, and inaccessible metadata have separate coverage values. Data types
+carry the native rowset value, the normalized `DbType` when known, and any reported length,
+precision, or scale. Missing facets have null values. A missing or unmapped type is diagnosed per object.
+Named sets, member properties, standalone measure groups, and dimension and measure-group relationship
+assertions are outside this inspector's current coverage.
+
+For live consumer checks, set `DUBURL_ADOMD_TABULAR_TEST_URL` and
+`DUBURL_ADOMD_MULTIDIM_TEST_URL` to test models with the requested object types and run the filter
+`FullyQualifiedName~AnalyticalMetadataInspectorTests` in `DubUrl.Schema.Testing`.
+
 ## Build and test
 
 ```powershell
@@ -33,7 +67,7 @@ dotnet test DubUrl.Schema.Testing -c Release -f net10.0 --no-build
 dotnet test DubUrl.Schema.Documents.Testing -c Release -f net10.0 --no-build
 ```
 
-CI selects the newest stable DubUrl version available for every referenced Core and provider package at or above the local baseline. It uses that version throughout build, QA, packaging and consumer checks. Local builds default to published DubUrl 0.60.0, which includes the schema command-plan API. Override `-p:DubUrlVersion=<candidate>` to validate another compatible release. No companion checkout or local package feed is required. See [real-database QA](https://github.com/Seddryck/DubUrl.Providers/tree/1f07066a4584cc75a93ea8f3a8cb8868ea8948a6/QA/Schema) and [validation](build/VALIDATION.md).
+CI selects a complete stable DubUrl release for the provider fixtures. Directory.Build.props sets separate minimum versions for DubUrl Core and the provider fixtures. Use `-p:DubUrlCoreVersion=<candidate>` to validate another Core and ADOMD release, or `-p:DubUrlVersion=<candidate>` to select a different provider fixture release. See [real-database QA](https://github.com/Seddryck/DubUrl.Providers/tree/1f07066a4584cc75a93ea8f3a8cb8868ea8948a6/QA/Schema) and [validation](build/VALIDATION.md).
 
 Discovery identities preserve provider-native qualifiers: SQLite `main` and attached aliases belong to `MetadataName.Database` and `DatabaseObjectName.Database`; they are not schemas. Use `DiscoveryOptions.Databases` to select aliases, `Schemas` for actual schemas, and `Catalogs` for catalogs. These filters also apply to views and their inventory; table filters can match any combination of literal qualifier components. Referenced-table closure preserves each target's complete identity. Rendered attached names require the same aliases to exist in the destination connection.
 
